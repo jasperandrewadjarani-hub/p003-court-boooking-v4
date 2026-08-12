@@ -101,9 +101,94 @@ async function main() {
   console.log(singleSlotPass ? "\nPASS" : "\nFAIL");
 
   const cartPass = await cartConflictProof(pool, tenantId, courtId, customerId);
+  const adjacentPass = await sameGroupAdjacentProof(pool, tenantId, courtId, customerId);
 
   await pool.end();
-  process.exit(singleSlotPass && cartPass ? 0 : 1);
+  process.exit(singleSlotPass && cartPass && adjacentPass ? 0 : 1);
+}
+
+/**
+ * Regression test for a real client-reported bug (2026-08-13, fixed in
+ * migration 20260813010000_fix_exclusion_same_group_bug): 3 consecutive
+ * back-to-back hours on the same court, in the same cart, always failed
+ * with a false "slot taken" — the turnover buffer on item N's end bled
+ * into item N+1's start, and the exclusion constraint didn't know both
+ * rows belonged to the same checkout. Fixed by adding
+ * `booking_group_id WITH <>` to the constraint. This proves it stays
+ * fixed: 3 adjacent same-group inserts must all succeed, and a
+ * different-group insert into the same buffered window must still fail.
+ */
+async function sameGroupAdjacentProof(pool: Pool, tenantId: string, courtId: string, customerId: string) {
+  const base = new Date(Date.now() + (8000 + Math.floor(Math.random() * 1000)) * 86400000);
+  const hour = 60 * 60000;
+
+  console.log("\nFiring 3 consecutive back-to-back slots in one booking group (should all succeed)...");
+  const client = await pool.connect();
+  let sameGroupPass = false;
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
+    const groupRes = await client.query(
+      `INSERT INTO booking_groups (id, tenant_id, customer_id, idempotency_key, total_minor, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, 150000, now()) RETURNING id`,
+      [tenantId, customerId, `adjacent-proof-${Date.now()}`]
+    );
+    const groupId = groupRes.rows[0].id;
+    for (let i = 0; i < 3; i++) {
+      const startsAt = new Date(base.getTime() + i * hour);
+      const endsAt = new Date(startsAt.getTime() + hour);
+      await client.query(
+        `INSERT INTO bookings (id, tenant_id, booking_group_id, court_id, starts_at, ends_at, turnover_buffer_minutes, tz, duration_minutes, price_minor, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 10, 'Asia/Manila', 60, 50000, now())`,
+        [tenantId, groupId, courtId, startsAt, endsAt]
+      );
+    }
+    await client.query("COMMIT");
+    sameGroupPass = true;
+    console.log("PASS — 3 adjacent same-group slots inserted without conflict.");
+  } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.log("FAIL —", err.code, err.message);
+  } finally {
+    client.release();
+  }
+
+  console.log("Firing a different-group booking into the same buffered window (should still fail with 23P01)...");
+  const client2 = await pool.connect();
+  let differentGroupBlocked = false;
+  try {
+    await client2.query("BEGIN");
+    await client2.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
+    const groupRes2 = await client2.query(
+      `INSERT INTO booking_groups (id, tenant_id, customer_id, idempotency_key, total_minor, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, 50000, now()) RETURNING id`,
+      [tenantId, customerId, `adjacent-proof-conflict-${Date.now()}`]
+    );
+    const groupId2 = groupRes2.rows[0].id;
+    const startsAt = new Date(base.getTime() + 65 * 60000); // 5 min into item 0's buffer zone
+    const endsAt = new Date(startsAt.getTime() + hour);
+    await client2.query(
+      `INSERT INTO bookings (id, tenant_id, booking_group_id, court_id, starts_at, ends_at, turnover_buffer_minutes, tz, duration_minutes, price_minor, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 10, 'Asia/Manila', 60, 50000, now())`,
+      [tenantId, groupId2, courtId, startsAt, endsAt]
+    );
+    await client2.query("COMMIT");
+    console.log("FAIL — different-group insert should have been rejected but succeeded.");
+  } catch (err: any) {
+    await client2.query("ROLLBACK").catch(() => {});
+    if (err.code === "23P01") {
+      differentGroupBlocked = true;
+      console.log("PASS — correctly rejected with 23P01 (real double-booking protection intact).");
+    } else {
+      console.log("FAIL — wrong error:", err.code, err.message);
+    }
+  } finally {
+    client2.release();
+  }
+
+  const pass = sameGroupPass && differentGroupBlocked;
+  console.log(pass ? "PASS (same-group adjacency)" : "FAIL (same-group adjacency)");
+  return pass;
 }
 
 /**
