@@ -55,9 +55,12 @@ async function main() {
   await bootstrap.end();
 
   // A slot far enough in the future not to collide with anything else, and
-  // unique to this run (timestamped) so re-running the script doesn't hit
-  // leftover rows from a previous run.
-  const startsAt = new Date(Date.now() + 365 * 86400000); // ~1 year out
+  // randomized (not just timestamped) so re-running the script minutes apart
+  // doesn't land within the same 1-hour window as a previous run's committed
+  // row — Date.now()-only offsets collided with the prior run's slot the
+  // first time this was tried back-to-back (see notes.md 2026-08-12), since
+  // a few minutes' difference is well inside a 1-hour exclusion range.
+  const startsAt = new Date(Date.now() + (365 + Math.floor(Math.random() * 3650)) * 86400000); // 1–11 years out
   const endsAt = new Date(startsAt.getTime() + 60 * 60000); // 1 hour
 
   console.log(`Firing ${CONCURRENCY} concurrent inserts for the same slot...`);
@@ -94,11 +97,125 @@ async function main() {
     console.log("Other error details:", otherErrors.slice(0, 5));
   }
 
-  const pass = succeeded === 1 && exclusionViolations === CONCURRENCY - 1 && otherErrors.length === 0;
-  console.log(pass ? "\nPASS" : "\nFAIL");
+  const singleSlotPass = succeeded === 1 && exclusionViolations === CONCURRENCY - 1 && otherErrors.length === 0;
+  console.log(singleSlotPass ? "\nPASS" : "\nFAIL");
+
+  const cartPass = await cartConflictProof(pool, tenantId, courtId, customerId);
 
   await pool.end();
-  process.exit(pass ? 0 : 1);
+  process.exit(singleSlotPass && cartPass ? 0 : 1);
+}
+
+/**
+ * Phase B gate (master plan §1, "Verify" step): two concurrent 3-item carts
+ * sharing exactly one overlapping slot — expect exactly one cart's
+ * BookingGroup to commit all 3 rows, the other's transaction to roll back
+ * completely (0 partial rows, group row itself never exists), because both
+ * the group creation and every item insert happen inside ONE transaction
+ * per cart. This is the direct empirical test of create.ts's "all-or-
+ * nothing is free — Postgres already gives it, no manual recheck-under-lock
+ * needed" claim.
+ */
+async function cartConflictProof(pool: Pool, tenantId: string, courtId: string, customerId: string) {
+  // Same randomization reasoning as the single-slot proof above — a fixed
+  // offset collided with a previous run's committed rows when re-run minutes
+  // apart.
+  const base = Date.now() + (4000 + Math.floor(Math.random() * 3650)) * 86400000; // ~11–21 years out, well clear of the single-slot proof's range
+  const hour = 60 * 60000;
+  const slot = (offsetHours: number) => {
+    const startsAt = new Date(base + offsetHours * hour);
+    return { startsAt, endsAt: new Date(startsAt.getTime() + hour) };
+  };
+
+  const shared = slot(0); // the one slot both carts fight over
+  const cartAOnly = [slot(2), slot(4)];
+  const cartBOnly = [slot(6), slot(8)];
+
+  const cartAKey = `cart-conflict-proof-A-${Date.now()}`;
+  const cartBKey = `cart-conflict-proof-B-${Date.now()}`;
+
+  console.log("\nFiring 2 concurrent 3-item carts sharing one overlapping slot...");
+
+  const [resA, resB] = await Promise.allSettled([
+    attemptCartBooking(pool, { tenantId, courtId, customerId, idempotencyKey: cartAKey, items: [shared, ...cartAOnly] }),
+    attemptCartBooking(pool, { tenantId, courtId, customerId, idempotencyKey: cartBKey, items: [shared, ...cartBOnly] }),
+  ]);
+
+  const outcomes = { A: resA, B: resB };
+  for (const [name, res] of Object.entries(outcomes)) {
+    console.log(`Cart ${name}: ${res.status}${res.status === "rejected" ? ` (${(res as PromiseRejectedResult).reason?.code ?? "?"})` : ""}`);
+  }
+
+  const exactlyOneWon = (resA.status === "fulfilled") !== (resB.status === "fulfilled");
+
+  // Direct DB check, not just trusting the promise outcomes — the loser's
+  // BookingGroup row must not exist at all (proves the whole transaction
+  // rolled back, not just the conflicting item). RLS is FORCED, so this
+  // ad-hoc query needs app.tenant_id set transaction-locally same as every
+  // other query here, not a bare pool.query().
+  const checkClient = await pool.connect();
+  let check;
+  try {
+    await checkClient.query("BEGIN");
+    await checkClient.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
+    check = await checkClient.query(
+      `SELECT bg.idempotency_key, count(b.id)::int AS item_count
+       FROM booking_groups bg LEFT JOIN bookings b ON b.booking_group_id = bg.id
+       WHERE bg.tenant_id = $1 AND bg.idempotency_key IN ($2, $3)
+       GROUP BY bg.idempotency_key`,
+      [tenantId, cartAKey, cartBKey]
+    );
+    await checkClient.query("COMMIT");
+  } finally {
+    checkClient.release();
+  }
+  const rowsByKey = new Map(check.rows.map((r) => [r.idempotency_key, r.item_count]));
+  const winnerKey = resA.status === "fulfilled" ? cartAKey : cartBKey;
+  const loserKey = resA.status === "fulfilled" ? cartBKey : cartAKey;
+  const winnerHasThreeItems = rowsByKey.get(winnerKey) === 3;
+  const loserHasNoGroup = !rowsByKey.has(loserKey);
+
+  console.log("Exactly one cart won:", exactlyOneWon);
+  console.log("Winner committed all 3 items:", winnerHasThreeItems, `(actual: ${rowsByKey.get(winnerKey) ?? 0})`);
+  console.log("Loser has zero partial rows (no group row at all):", loserHasNoGroup);
+
+  const pass = exactlyOneWon && winnerHasThreeItems && loserHasNoGroup;
+  console.log(pass ? "PASS (cart conflict)" : "FAIL (cart conflict)");
+  return pass;
+}
+
+async function attemptCartBooking(
+  pool: Pool,
+  args: { tenantId: string; courtId: string; customerId: string; idempotencyKey: string; items: { startsAt: Date; endsAt: Date }[] }
+) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [args.tenantId]);
+
+    const groupRes = await client.query(
+      `INSERT INTO booking_groups (id, tenant_id, customer_id, idempotency_key, total_minor, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, 150000, now()) RETURNING id`,
+      [args.tenantId, args.customerId, args.idempotencyKey]
+    );
+    const bookingGroupId = groupRes.rows[0].id;
+
+    for (const item of args.items) {
+      await client.query(
+        `INSERT INTO bookings (id, tenant_id, booking_group_id, court_id, starts_at, ends_at, turnover_buffer_minutes, tz, duration_minutes, price_minor, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 10, 'Asia/Manila', 60, 50000, now())`,
+        [args.tenantId, bookingGroupId, args.courtId, item.startsAt, item.endsAt]
+      );
+    }
+
+    await client.query("COMMIT");
+    return bookingGroupId;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function attemptBooking(

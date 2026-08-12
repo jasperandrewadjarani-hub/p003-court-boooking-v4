@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/tenant/withTenant";
 import { toMinutes, minutesToTimeStr } from "@/lib/pricing/calculate";
+import { sweepLapsedBookings } from "@/lib/booking/expiry";
 import type { Prisma } from "@/generated/prisma/client";
 
 export interface BookingRulesSettings {
@@ -10,6 +11,9 @@ export interface BookingRulesSettings {
   maxAdvanceBookingDays: number;
   minBookingMinutes: number;
   maxBookingMinutes: number;
+  maxCourtHoursPerBooking: number; // v2's MAX_COURT_HOURS_PER_BOOKING — caps a cart's total (courts × hours)
+  reservationHoldMinutes: number; // v2's RESERVATION_HOLD_MINUTES — unpaid hold window before auto-lapse
+  receiptReviewHoldMinutes: number; // v2's RECEIPT_REVIEW_HOLD_MINUTES — extended window once a receipt is uploaded
 }
 
 const DEFAULT_RULES: BookingRulesSettings = {
@@ -20,6 +24,9 @@ const DEFAULT_RULES: BookingRulesSettings = {
   maxAdvanceBookingDays: 30,
   minBookingMinutes: 30,
   maxBookingMinutes: 180,
+  maxCourtHoursPerBooking: 12,
+  reservationHoldMinutes: 20,
+  receiptReviewHoldMinutes: 120,
 };
 
 /** Pure helper — reads booking_rules from an ALREADY-OPEN transaction
@@ -71,6 +78,10 @@ const ACTIVE_STATUSES = ["reserved", "confirmed", "checked_in", "playing"] as co
 export async function getAvailabilityGrid(tenantId: string, dateKey: string): Promise<AvailabilityGrid> {
   return withTenant(tenantId, async (tx) => {
     const rules = await readBookingRules(tx, tenantId);
+
+    // Lazy read-repair: a slot abandoned past its hold window reappears the
+    // moment anyone next loads this tenant's grid, no cron required.
+    await sweepLapsedBookings(tx, tenantId, rules);
 
     const courts = await tx.court.findMany({
       where: { tenantId, status: { not: "closed" } },

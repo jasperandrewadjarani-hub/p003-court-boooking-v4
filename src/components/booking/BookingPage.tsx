@@ -1,8 +1,11 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
-import { fetchGridAction, createBookingAction } from "@/app/actions";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { fetchGridAction, createBookingAction, previewCartTotalAction } from "@/app/actions";
 import type { AvailabilityGrid } from "@/lib/booking/availability";
+import type { MembershipOption } from "@/lib/booking/memberships";
+import { CourtGrid, slotKey } from "@/components/booking/CourtGrid";
+import { CartBar, type CartItem } from "@/components/booking/CartBar";
 
 interface TenantInfo {
   name: string;
@@ -10,13 +13,6 @@ interface TenantInfo {
   currency: string;
   primaryColor: string;
   accentColor: string;
-}
-
-interface SelectedSlot {
-  courtId: string;
-  courtName: string;
-  start: string;
-  end: string;
 }
 
 function todayKey(offsetDays = 0): string {
@@ -28,12 +24,9 @@ function todayKey(offsetDays = 0): string {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-// Deliberately not toLocaleDateString(): its output depends on the ICU/Intl
-// data available in the runtime, which differs between the Node.js server
-// (SSR) and the browser (hydration) even with the same `undefined` locale
-// argument — a real bug hit while testing this slice (server rendered
-// "Wed 12 Aug", client rendered "Wed, 12 Aug", React discarded and
-// re-rendered the whole tree). A fixed lookup table is deterministic.
+// Deliberately not toLocaleDateString() — see notes.md 2026-08-12 (hydration
+// mismatch: server/client ICU data disagreed even with the same `undefined`
+// locale argument). A fixed lookup table is deterministic by construction.
 function formatDateChip(dateKey: string): { weekday: string; day: string } {
   const [y, m, d] = dateKey.split("-").map(Number);
   const date = new Date(y, m - 1, d);
@@ -53,26 +46,60 @@ function formatTime(hhmm: string): string {
 }
 
 /**
- * NOTE — Phase A scope only (VOLT visual port). Real markup/class names
- * from v2's Index.html, real HUD grid, real cart-bar/modal components. Still
- * single-slot selection under the hood (the cart-bar below currently holds
- * at most one item) — the actual multi-court/multi-slot cart mechanic is
- * Phase B, which slots into this same cart-bar/modal shell. Membership
- * pricing, real customer accounts, and receipt upload are Phase B/C/D.
+ * NOTE — Phase B scope: real multi-court/multi-slot cart (v2's actual
+ * "click any open slot to toggle it into your cart, across any courts and
+ * times, then check out once") — the specific feature the client asked
+ * for by name. Customer identification is still "find or create by email"
+ * with no password/session (Phase C); receipt upload/payment screen is
+ * Phase D.
  */
-export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initialGrid: AvailabilityGrid }) {
+export function BookingPage({
+  tenant,
+  initialGrid,
+  memberships,
+}: {
+  tenant: TenantInfo;
+  initialGrid: AvailabilityGrid;
+  memberships: MembershipOption[];
+}) {
   const [dateKey, setDateKey] = useState(initialGrid.date);
   const [grid, setGrid] = useState(initialGrid);
-  const [selected, setSelected] = useState<SelectedSlot | null>(null);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [tab, setTab] = useState<"book" | "mine">("book");
+  const [membershipType, setMembershipType] = useState("");
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", players: 4 });
+  const [preview, setPreview] = useState({ totalMinor: 0, discountMinor: 0 });
   const [status, setStatus] = useState<{ kind: "idle" | "success" | "error"; message?: string; reference?: string; totalMinor?: number }>({ kind: "idle" });
   const [isPending, startTransition] = useTransition();
 
+  const selectedKeys = useMemo(() => new Set(cart.map((c) => c.key)), [cart]);
+
+  // Live total preview — same calculateCartTotal call the real booking
+  // transaction uses (priceCart in create.ts), so this can never drift from
+  // what the customer is actually charged. Re-runs whenever the cart or the
+  // selected membership changes.
+  useEffect(() => {
+    if (!cart.length) {
+      setPreview({ totalMinor: 0, discountMinor: 0 });
+      return;
+    }
+    let cancelled = false;
+    previewCartTotalAction(
+      dateKey,
+      cart.map((c) => ({ courtId: c.courtId, startTime: c.start, endTime: c.end })),
+      membershipType || undefined
+    ).then((result) => {
+      if (!cancelled) setPreview(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cart, dateKey, membershipType]);
+
   function loadDate(key: string) {
     setDateKey(key);
-    setSelected(null);
+    setCart([]);
     setModalOpen(false);
     startTransition(async () => {
       const data = await fetchGridAction(key);
@@ -80,17 +107,18 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
     });
   }
 
-  function onSlotClick(courtId: string, courtName: string, start: string, end: string) {
-    setSelected({ courtId, courtName, start, end });
+  function onToggleSlot(courtId: string, courtName: string, start: string, end: string) {
+    const key = slotKey(courtId, start);
     setStatus({ kind: "idle" });
+    setCart((prev) => (prev.some((c) => c.key === key) ? prev.filter((c) => c.key !== key) : [...prev, { key, courtId, courtName, start, end }]));
   }
 
-  function removeSelected() {
-    setSelected(null);
+  function removeCartItem(key: string) {
+    setCart((prev) => prev.filter((c) => c.key !== key));
   }
 
   function submitBooking() {
-    if (!selected) return;
+    if (!cart.length) return;
     if (!form.firstName || !form.lastName || !form.email || !form.phone) {
       setStatus({ kind: "error", message: "Fill in all fields." });
       return;
@@ -98,18 +126,17 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
     startTransition(async () => {
       const res = await createBookingAction({
         dateKey,
-        courtId: selected.courtId,
-        startTime: selected.start,
-        endTime: selected.end,
+        items: cart.map((c) => ({ courtId: c.courtId, startTime: c.start, endTime: c.end })),
         players: form.players,
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
         phone: form.phone,
+        membershipType: membershipType || undefined,
       });
       if (res.ok) {
         setStatus({ kind: "success", reference: res.result.reference, totalMinor: res.result.totalMinor });
-        setSelected(null);
+        setCart([]);
         setModalOpen(false);
         const fresh = await fetchGridAction(dateKey);
         setGrid(fresh);
@@ -130,6 +157,12 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
     });
     return `${tenant.name.toUpperCase()} :// ${formatDateLabel(dateKey).toUpperCase()} OCCUPANCY — ${parts.join(" · ")} :: TAP OPEN SLOTS TO BUILD YOUR BOOKING ::`;
   }, [grid, dateKey, tenant.name]);
+
+  const totalHours = cart.reduce((sum, c) => {
+    const [sh, sm] = c.start.split(":").map(Number);
+    const [eh, em] = c.end.split(":").map(Number);
+    return sum + (eh * 60 + em - (sh * 60 + sm)) / 60;
+  }, 0);
 
   return (
     <main style={{ ["--tenant-primary" as string]: tenant.primaryColor, ["--tenant-accent" as string]: tenant.accentColor }}>
@@ -182,65 +215,20 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
                 Court Grid — <span className="mono dim">{formatDateLabel(dateKey)}</span>
               </div>
               <p className="dim mono" style={{ fontSize: 11, marginTop: -8 }}>
-                Tap an open slot to select it. Updates live — no refresh needed.
+                Tap multiple open slots to add them to your booking, across any court. Updates live — no refresh needed.
               </p>
-              <div className="grid-wrap" key={dateKey} aria-busy={isPending}>
-                <div
-                  className="court-grid"
-                  style={{ ["--court-count" as string]: grid.courts.length || 1 }}
-                >
-                  <div className="head" />
-                  {grid.courts.map((c) => (
-                    <div className="head" key={c.id}>
-                      <strong>{c.name}</strong>
-                      <span>{c.description ?? (c.indoor ? "Indoor" : "Outdoor")}</span>
-                    </div>
-                  ))}
-                  {grid.courts[0]?.slots.map((_, i) => (
-                    <Fragment key={i}>
-                      <div className="time-label">{formatTime(grid.courts[0].slots[i].start)}</div>
-                      {grid.courts.map((court) => {
-                        const slot = court.slots[i];
-                        const isSelected = selected?.courtId === court.id && selected.start === slot.start;
-                        const clickable = slot.status === "available";
-                        const classes = ["slot", slot.status, isSelected ? "selected" : ""].filter(Boolean).join(" ");
-                        return (
-                          <div
-                            key={court.id}
-                            className={classes}
-                            onClick={() => clickable && onSlotClick(court.id, court.name, slot.start, slot.end)}
-                            role={clickable ? "button" : undefined}
-                          >
-                            <span className="slot-label">
-                              {isSelected ? "Selected" : slot.status === "available" ? "Open" : slot.status === "booked" ? "Booked" : "Maint."}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </Fragment>
-                  ))}
-                </div>
+              <div key={dateKey}>
+                <CourtGrid grid={grid} selectedKeys={selectedKeys} onToggleSlot={onToggleSlot} isPending={isPending} />
               </div>
             </div>
 
-            <div className={`cart-bar ${selected ? "visible" : ""}`}>
-              <div className="cart-bar__items">
-                {selected && (
-                  <span className="cart-chip">
-                    {selected.courtName} · {formatTime(selected.start)}–{formatTime(selected.end)}
-                    <button type="button" onClick={removeSelected} aria-label="Remove">
-                      ✕
-                    </button>
-                  </span>
-                )}
-              </div>
-              <div className="cart-bar__row">
-                <span className="mono dim">1 slot selected</span>
-                <button className="btn" onClick={() => setModalOpen(true)} disabled={!selected}>
-                  Continue
-                </button>
-              </div>
-            </div>
+            <CartBar
+              items={cart}
+              totalHoursLabel={`${cart.length} slot${cart.length === 1 ? "" : "s"} selected · ${totalHours}h total`}
+              totalText={cart.length ? `${tenant.currency} ${(preview.totalMinor / 100).toFixed(2)}` : "—"}
+              onRemove={removeCartItem}
+              onContinue={() => setModalOpen(true)}
+            />
           </>
         ) : (
           <div className="panel">
@@ -283,18 +271,35 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
         </a>
       </div>
 
-      {modalOpen && selected && (
+      {modalOpen && cart.length > 0 && (
         <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <span className="close" onClick={() => setModalOpen(false)}>
               [ ESC ]
             </span>
             <h3>Confirm Booking</h3>
-            <div className="summary-line">
-              <span>{selected.courtName}</span>
-              <strong>
-                {formatTime(selected.start)}–{formatTime(selected.end)}
-              </strong>
+
+            <div className="grouped-booking-block">
+              <div className="grouped-booking-head">
+                <strong>{cart.length} item{cart.length === 1 ? "" : "s"}</strong>
+                <span>{formatDateLabel(dateKey)}</span>
+              </div>
+              {cart.map((item) => (
+                <div className="grouped-booking-item" key={item.key}>
+                  <div className="booking-court-identity">
+                    <strong>{item.courtName}</strong>
+                  </div>
+                  <span className="grouped-booking-time">
+                    {formatTime(item.start)}–{formatTime(item.end)}
+                  </span>
+                </div>
+              ))}
+              <div className="grouped-booking-total">
+                <span>Estimated Total</span>
+                <strong>
+                  {tenant.currency} {(preview.totalMinor / 100).toFixed(2)}
+                </strong>
+              </div>
             </div>
 
             <label>First Name</label>
@@ -308,9 +313,21 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
             <label>Number of Players</label>
             <input type="number" min={1} value={form.players} onChange={(e) => setForm({ ...form, players: Number(e.target.value) })} />
             <label>Membership</label>
-            <select disabled>
-              <option>No Membership</option>
+            <select value={membershipType} onChange={(e) => setMembershipType(e.target.value)}>
+              <option value="">No Membership</option>
+              {memberships.map((m) => (
+                <option key={m.name} value={m.name}>
+                  {m.name} (−{m.discountPercent}%)
+                </option>
+              ))}
             </select>
+
+            <div className="total-line">
+              <span>Estimated Total</span>
+              <span>
+                {tenant.currency} {(preview.totalMinor / 100).toFixed(2)}
+              </span>
+            </div>
 
             <button className="btn block" style={{ marginTop: 18 }} onClick={submitBooking} disabled={isPending}>
               {isPending ? "Booking…" : "Confirm Booking"}

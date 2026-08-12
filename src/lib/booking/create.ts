@@ -1,85 +1,92 @@
-import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/tenant/withTenant";
-import { calculatePrice } from "@/lib/pricing/calculate";
+import { calculateCartTotal } from "@/lib/pricing/calculate";
 import { getBookingRules } from "@/lib/booking/availability";
+import { sweepLapsedBookings } from "@/lib/booking/expiry";
 import { Prisma } from "@/generated/prisma/client";
+
+export interface CartItemInput {
+  courtId: string;
+  startTime: string; // "HH:MM"
+  endTime: string;
+}
 
 export interface CreateBookingInput {
   tenantId: string;
   dateKey: string; // "YYYY-MM-DD"
-  courtId: string;
-  startTime: string;
-  endTime: string;
+  items: CartItemInput[];
   players: number;
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
+  membershipType?: string;
+}
+
+export interface CreateBookingResultItem {
+  courtId: string;
+  courtName: string;
+  start: string;
+  end: string;
+  priceMinor: number;
 }
 
 export interface CreateBookingResult {
   bookingGroupId: string;
   reference: string;
   totalMinor: number;
-  courtName: string;
+  items: CreateBookingResultItem[];
 }
 
 export class SlotTakenError extends Error {
   constructor() {
-    super("That slot was just booked by someone else — pick another time.");
+    super("One or more of those slots was just booked by someone else — the whole booking was cancelled, pick different times.");
     this.name = "SlotTakenError";
   }
 }
 
 /**
- * NOTE — reduced scope for the "clickable slice" milestone. This is NOT
- * the full booking transaction from master plan §4.4: no idempotency-key
- * dedup on the client (one is generated here instead), no promo handling,
- * and customer identification is "find or create by email" with no
- * password/session at all — anyone who knows an email can act as that
- * customer. Real auth (Argon2id, email verification, sessions) is
- * unbuilt Phase 2 work. Do not treat a booking made through this path as
- * proof the real auth-gated flow works — it proves the booking
- * transaction and the exclusion constraint work, which was the point of
- * this slice.
+ * NOTE — reduced scope for the "clickable slice" milestone, still true here:
+ * customer identification is "find or create by email" with no password/
+ * session at all — anyone who knows an email can act as that customer. Real
+ * auth (Argon2id, sessions) is Phase C. Do not treat a booking made through
+ * this path as proof the real auth-gated flow works — it proves the
+ * multi-item booking transaction and the exclusion constraint work under a
+ * cart, which is the point of this slice.
+ *
+ * Multi-item ("cart") semantics, matching v2's createBooking_: one checkout
+ * can cover several courts and/or time slots at once. Every item becomes
+ * its own `Booking` row, all sharing one `BookingGroup`. All-or-nothing is
+ * free here — every item insert happens inside ONE Postgres transaction, and
+ * the GiST exclusion constraint is checked per-insert including against the
+ * transaction's own earlier inserts, so an internally-overlapping cart or a
+ * cart racing another customer's booking both fail the same way (23P01) and
+ * roll back the whole transaction. No manual "recheck under lock" needed —
+ * v2 needed that because Apps Script's LockService is coarser than a real
+ * database transaction; Postgres already gives this for free.
  */
 export async function createBooking(input: CreateBookingInput): Promise<CreateBookingResult> {
+  if (!input.items.length) throw new Error("Cart is empty.");
+
   const rules = await getBookingRules(input.tenantId);
 
-  const startMin = toMinutes(input.startTime);
-  const endMin = toMinutes(input.endTime);
-  const duration = endMin - startMin;
-  if (duration < rules.minBookingMinutes) throw new Error(`Minimum booking length is ${rules.minBookingMinutes} minutes.`);
-  if (duration > rules.maxBookingMinutes) throw new Error(`Maximum booking length is ${rules.maxBookingMinutes / 60} hours.`);
-  if (startMin < rules.openHour * 60 || endMin > rules.closeHour * 60) throw new Error("Booking must fall within business hours.");
+  let totalHours = 0;
+  for (const item of input.items) {
+    const startMin = toMinutes(item.startTime);
+    const endMin = toMinutes(item.endTime);
+    const duration = endMin - startMin;
+    if (duration < rules.minBookingMinutes) throw new Error(`Minimum booking length is ${rules.minBookingMinutes} minutes.`);
+    if (duration > rules.maxBookingMinutes) throw new Error(`Maximum booking length is ${rules.maxBookingMinutes / 60} hours.`);
+    if (startMin < rules.openHour * 60 || endMin > rules.closeHour * 60) throw new Error("Booking must fall within business hours.");
+    totalHours += duration / 60;
+  }
+  if (totalHours > rules.maxCourtHoursPerBooking) {
+    throw new Error(`A single booking can cover at most ${rules.maxCourtHoursPerBooking} court-hours — remove an item or split into two bookings.`);
+  }
 
-  // Pricing happens outside the transaction — it's read-only and doesn't
-  // need to hold any lock (master plan §4.4: "pricing ... happens outside
-  // the transaction, the inverse of v2 where all of it was inside the lock").
-  const priceInputs = await withTenant(input.tenantId, async (tx) => {
-    const court = await tx.court.findUnique({ where: { id: input.courtId } });
-    if (!court) throw new Error("Court not found.");
-    const priceMatrix = await tx.priceMatrixRow.findMany({ where: { tenantId: input.tenantId } });
-    const holidays = await tx.holiday.findMany({ where: { tenantId: input.tenantId } });
-    const memberships = await tx.membership.findMany({ where: { tenantId: input.tenantId } });
-    return { court, priceMatrix, holidays, memberships };
-  });
-
-  const price = calculatePrice({
-    court: { indoor: priceInputs.court.indoor, baseRateMinor: priceInputs.court.baseRateMinor, name: priceInputs.court.name },
-    priceMatrix: priceInputs.priceMatrix.map((p) => ({
-      dayType: p.dayType as "weekday" | "weekend",
-      startTime: p.startTime,
-      endTime: p.endTime,
-      courtType: p.courtType as "indoor" | "outdoor",
-      pricePerHourMinor: p.pricePerHourMinor,
-    })),
-    holidays: priceInputs.holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name, rateMultiplier: Number(h.rateMultiplier) })),
-    memberships: priceInputs.memberships.map((m) => ({ name: m.name, discountPercent: Number(m.discountPercent), active: m.active })),
-    date: input.dateKey,
-    startTime: input.startTime,
-    endTime: input.endTime,
-  });
+  // Pricing happens outside the transaction — read-only, no lock needed
+  // (master plan §4.4: "pricing ... happens outside the transaction, the
+  // inverse of v2 where all of it was inside the lock").
+  const { cart, courtsById } = await priceCart(input.tenantId, input.dateKey, input.items, input.membershipType);
 
   // Find or create the customer (by email) OUTSIDE the booking-write
   // transaction too — same reasoning, it's not part of the conflict-check
@@ -107,43 +114,56 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
     });
   });
 
-  const startsAt = toUtcDate(input.dateKey, input.startTime);
-  const endsAt = toUtcDate(input.dateKey, input.endTime);
   const idempotencyKey = crypto.randomUUID();
 
   try {
     const created = await withTenant(input.tenantId, async (tx) => {
+      // Same lazy-expiry sweep as the grid read — without this, a cart could
+      // spuriously fail against a slot someone else abandoned but nobody has
+      // viewed the grid for since (no cron has run to release it).
+      await sweepLapsedBookings(tx, input.tenantId, rules);
+
       const group = await tx.bookingGroup.create({
         data: {
           tenantId: input.tenantId,
           customerId: customer.id,
           idempotencyKey,
-          totalMinor: price.totalMinor,
+          totalMinor: cart.totalMinor,
         },
       });
 
-      // The conflict check IS the exclusion constraint — this insert either
-      // succeeds or raises 23P01. No application-level lock, no pre-check.
-      await tx.booking.create({
-        data: {
-          tenantId: input.tenantId,
-          bookingGroupId: group.id,
-          courtId: input.courtId,
-          startsAt,
-          endsAt,
-          turnoverBufferMinutes: rules.turnoverBufferMinutes,
-          tz: "Asia/Manila", // snapshot; real per-tenant tz wiring is Phase 2 formal work
-          durationMinutes: duration,
-          players: input.players,
-          priceMinor: price.totalMinor,
-        },
-      });
+      // The conflict check IS the exclusion constraint — each insert either
+      // succeeds or raises 23P01. An overlap against an already-committed
+      // row OR against an earlier insert in this same cart both fail here,
+      // rolling back every row created so far in this transaction.
+      const createdItems: CreateBookingResultItem[] = [];
+      for (let i = 0; i < input.items.length; i++) {
+        const item = input.items[i];
+        const court = courtsById.get(item.courtId)!;
+        const startsAt = toUtcDate(input.dateKey, item.startTime);
+        const endsAt = toUtcDate(input.dateKey, item.endTime);
+        const priceMinor = cart.items[i].totalMinor;
 
-      // Reference generation — atomic, tiny, held for ~1ms (master plan §4.4
-      // step 4). INSERT..ON CONFLICT..RETURNING is correct in one round trip
-      // whether this is the day's first booking or the Nth: on first insert
-      // next_seq becomes 2 (this claim used 1); on conflict it increments by
-      // 1 and the claim is always `returned.next_seq - 1`.
+        await tx.booking.create({
+          data: {
+            tenantId: input.tenantId,
+            bookingGroupId: group.id,
+            courtId: item.courtId,
+            startsAt,
+            endsAt,
+            turnoverBufferMinutes: rules.turnoverBufferMinutes,
+            tz: "Asia/Manila", // snapshot; real per-tenant tz wiring is Phase 2 formal work
+            durationMinutes: toMinutes(item.endTime) - toMinutes(item.startTime),
+            players: input.players,
+            priceMinor,
+          },
+        });
+
+        createdItems.push({ courtId: item.courtId, courtName: court.name, start: item.startTime, end: item.endTime, priceMinor });
+      }
+
+      // Reference generation — atomic, tiny, held once per GROUP (not once
+      // per item) — master plan §4.4 step 4.
       const dateForSeq = new Date(input.dateKey + "T00:00:00.000Z");
       const seqResult = await tx.$queryRaw<{ next_seq: number }[]>`
         INSERT INTO booking_sequences (tenant_id, local_date, next_seq)
@@ -164,14 +184,14 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
           entity: "booking_group",
           entityId: group.id,
           action: "CREATE",
-          details: { reference, totalMinor: price.totalMinor },
+          details: { reference, totalMinor: cart.totalMinor, itemCount: createdItems.length },
         },
       });
 
-      return { bookingGroupId: group.id, reference };
+      return { bookingGroupId: group.id, reference, items: createdItems };
     });
 
-    return { ...created, totalMinor: price.totalMinor, courtName: priceInputs.court.name };
+    return { ...created, totalMinor: cart.totalMinor };
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2010" && String(err.meta?.code) === "23P01") {
       throw new SlotTakenError();
@@ -192,4 +212,48 @@ function toMinutes(hhmm: string): number {
 
 function toUtcDate(dateKey: string, time: string): Date {
   return new Date(`${dateKey}T${time}:00.000Z`);
+}
+
+/**
+ * Shared cart-pricing fetch+calculate, used by createBooking() (the
+ * authority) AND the live-preview server action (src/app/actions.ts) — one
+ * implementation, so a customer's pre-checkout preview can never drift from
+ * what they're actually charged. Read-only, no transaction lock needed.
+ */
+export async function priceCart(tenantId: string, dateKey: string, items: CartItemInput[], membershipType?: string) {
+  const courtIds = [...new Set(items.map((i) => i.courtId))];
+  const priceInputs = await withTenant(tenantId, async (tx) => {
+    const courts = await tx.court.findMany({ where: { tenantId, id: { in: courtIds } } });
+    const priceMatrix = await tx.priceMatrixRow.findMany({ where: { tenantId } });
+    const holidays = await tx.holiday.findMany({ where: { tenantId } });
+    const memberships = await tx.membership.findMany({ where: { tenantId } });
+    return { courts, priceMatrix, holidays, memberships };
+  });
+
+  const courtsById = new Map(priceInputs.courts.map((c) => [c.id, c]));
+  for (const item of items) {
+    if (!courtsById.has(item.courtId)) throw new Error("Court not found.");
+  }
+
+  const cart = calculateCartTotal(
+    items.map((item) => {
+      const court = courtsById.get(item.courtId)!;
+      return { court: { indoor: court.indoor, baseRateMinor: court.baseRateMinor, name: court.name }, startTime: item.startTime, endTime: item.endTime };
+    }),
+    {
+      priceMatrix: priceInputs.priceMatrix.map((p) => ({
+        dayType: p.dayType as "weekday" | "weekend",
+        startTime: p.startTime,
+        endTime: p.endTime,
+        courtType: p.courtType as "indoor" | "outdoor",
+        pricePerHourMinor: p.pricePerHourMinor,
+      })),
+      holidays: priceInputs.holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name, rateMultiplier: Number(h.rateMultiplier) })),
+      memberships: priceInputs.memberships.map((m) => ({ name: m.name, discountPercent: Number(m.discountPercent), active: m.active })),
+      date: dateKey,
+      membershipType,
+    }
+  );
+
+  return { cart, courtsById };
 }

@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { resolveTenant, TenantNotFoundError } from "@/lib/tenant/resolve";
 import { getAvailabilityGrid } from "@/lib/booking/availability";
+import { getActiveMemberships } from "@/lib/booking/memberships";
 import { BookingPage } from "@/components/booking/BookingPage";
 
 function todayKey(): string {
@@ -14,7 +15,10 @@ export default async function Home() {
   try {
     const tenant = await resolveTenant();
     const dateKey = todayKey();
-    const grid = await getAvailabilityGrid(tenant.id, dateKey);
+    const [grid, memberships] = await Promise.all([
+      getAvailabilityGrid(tenant.id, dateKey),
+      getActiveMemberships(tenant.id),
+    ]);
 
     return (
       <BookingPage
@@ -26,6 +30,7 @@ export default async function Home() {
           accentColor: tenant.accentColor ?? "#2EE6FF",
         }}
         initialGrid={grid}
+        memberships={memberships}
       />
     );
   } catch (error) {
