@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/tenant/withTenant";
 import { toMinutes, minutesToTimeStr } from "@/lib/pricing/calculate";
+import type { Prisma } from "@/generated/prisma/client";
 
 export interface BookingRulesSettings {
   openHour: number;
@@ -21,13 +22,20 @@ const DEFAULT_RULES: BookingRulesSettings = {
   maxBookingMinutes: 180,
 };
 
-export async function getBookingRules(tenantId: string): Promise<BookingRulesSettings> {
-  return withTenant(tenantId, async (tx) => {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId, key: "booking_rules" } },
-    });
-    return row ? { ...DEFAULT_RULES, ...(row.value as Partial<BookingRulesSettings>) } : DEFAULT_RULES;
+/** Pure helper — reads booking_rules from an ALREADY-OPEN transaction
+ *  client, rather than opening its own. Every DB round trip is expensive
+ *  here (the deployed function runs in Vercel's iad1 region, ~250ms each
+ *  way from Supabase's Singapore region — see notes.md 2026-08-12), so
+ *  every query that can share a transaction with its siblings should. */
+async function readBookingRules(tx: Prisma.TransactionClient, tenantId: string): Promise<BookingRulesSettings> {
+  const row = await tx.tenantSetting.findUnique({
+    where: { tenantId_key: { tenantId, key: "booking_rules" } },
   });
+  return row ? { ...DEFAULT_RULES, ...(row.value as Partial<BookingRulesSettings>) } : DEFAULT_RULES;
+}
+
+export async function getBookingRules(tenantId: string): Promise<BookingRulesSettings> {
+  return withTenant(tenantId, (tx) => readBookingRules(tx, tenantId));
 }
 
 export interface GridSlot {
@@ -57,10 +65,13 @@ export interface AvailabilityGrid {
  *  activeBookingStatuses_() and the exclusion constraint's own predicate. */
 const ACTIVE_STATUSES = ["reserved", "confirmed", "checked_in", "playing"] as const;
 
+/** One transaction, one round trip for all three reads (rules, courts,
+ *  bookings) — was two separate transactions before, which measurably cost
+ *  an extra network round trip for no benefit (see notes.md 2026-08-12). */
 export async function getAvailabilityGrid(tenantId: string, dateKey: string): Promise<AvailabilityGrid> {
-  const rules = await getBookingRules(tenantId);
-
   return withTenant(tenantId, async (tx) => {
+    const rules = await readBookingRules(tx, tenantId);
+
     const courts = await tx.court.findMany({
       where: { tenantId, status: { not: "closed" } },
       orderBy: { sortOrder: "asc" },
