@@ -17,6 +17,9 @@ export interface CreateBookingInput {
   players: number;
   customerId: string; // resolved server-side from the signed-in session (src/lib/auth/customerAuth.ts) — never trust a raw email field
   membershipType?: string;
+  source?: "web_app" | "walk_in" | "phone" | "staff"; // default web_app
+  staffUserId?: string; // set only when source is staff/walk_in (src/lib/admin/frontdesk.ts)
+  notes?: string;
 }
 
 export interface CreateBookingResultItem {
@@ -100,6 +103,9 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
           customerId: input.customerId,
           idempotencyKey,
           totalMinor: cart.totalMinor,
+          source: input.source ?? "web_app",
+          staffUserId: input.staffUserId,
+          notes: input.notes,
         },
       });
 
@@ -151,7 +157,8 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
       await tx.auditLog.create({
         data: {
           tenantId: input.tenantId,
-          actorKind: "customer",
+          actorUserId: input.staffUserId,
+          actorKind: input.staffUserId ? "staff" : "customer",
           entity: "booking_group",
           entityId: group.id,
           action: "CREATE",

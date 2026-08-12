@@ -1,0 +1,60 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { loginStaff } from "@/lib/auth/staffAuth";
+
+export default function AdminLoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function submit() {
+    setError(null);
+    setPending(true);
+    try {
+      await loginStaff(email, password);
+      router.push("/admin");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <div className="brand">
+          VOLT<span style={{ color: "var(--accent-cyan)" }}>://</span>ADMIN
+        </div>
+        <p className="dim mono" style={{ fontSize: 12, marginBottom: 20 }}>
+          STAFF ACCESS ONLY
+        </p>
+
+        <label>Staff Email</label>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@volt.club" />
+        <label>Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        {error && <div className="field-warning">{error}</div>}
+        <button className="btn block" style={{ marginTop: 16 }} onClick={submit} disabled={pending}>
+          {pending ? "Working…" : "Sign In"}
+        </button>
+        <p className="jt-brand-bar" style={{ marginTop: 24, background: "none", border: "none" }}>
+          <a href="https://www.facebook.com/profile.php?id=61590234100280" target="_blank" rel="noopener noreferrer">
+            Powered by JT Consulting &amp; Analytics
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}

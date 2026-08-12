@@ -1,0 +1,42 @@
+import { redirect } from "next/navigation";
+import { getCurrentStaff, logoutStaff } from "@/lib/auth/staffAuth";
+import { resolveTenant } from "@/lib/tenant/resolve";
+import { AdminNav } from "@/components/admin/AdminNav";
+
+export default async function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
+  const staff = await getCurrentStaff();
+  if (!staff) redirect("/admin/login");
+
+  const tenant = await resolveTenant();
+
+  async function doLogout() {
+    "use server";
+    await logoutStaff();
+    redirect("/admin/login");
+  }
+
+  return (
+    <div className="admin-shell">
+      <div className="admin-sidebar">
+        <div className="brand" style={{ fontSize: 20 }}>
+          {tenant.name.toUpperCase()}
+        </div>
+        <AdminNav />
+        <div className="admin-nav-item admin-nav-logout" onClick={undefined}>
+          <form action={doLogout}>
+            <button type="submit" style={{ all: "unset", cursor: "pointer" }}>
+              Log Out
+            </button>
+          </form>
+        </div>
+        <div className="admin-nav-item dim admin-nav-account">{staff.name}</div>
+        <div className="admin-nav-item dim admin-nav-credit">
+          <a href="https://www.facebook.com/profile.php?id=61590234100280" target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>
+            Powered by JT Consulting &amp; Analytics
+          </a>
+        </div>
+      </div>
+      <div className="admin-main">{children}</div>
+    </div>
+  );
+}

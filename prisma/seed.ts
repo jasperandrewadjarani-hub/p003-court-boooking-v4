@@ -4,9 +4,16 @@
 // signs up). Run with: npx prisma db seed
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { hash } from "@node-rs/argon2";
 
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL });
 const prisma = new PrismaClient({ adapter });
+
+// Every seeded tenant gets one owner-role staff account with this password,
+// same "facility default password until changed" pattern as v2 — not
+// randomized per tenant, since these are $0 test-phase dev fixtures, not
+// real production credentials.
+const DEFAULT_STAFF_PASSWORD = "ChangeMe123!";
 
 async function seedTenant(input: {
   slug: string;
@@ -122,6 +129,19 @@ async function seedTenant(input: {
       freeHoursMonth: 5,
     },
   });
+
+  const staffEmail = `admin@${input.slug}.test`;
+  const existingStaffUser = await prisma.user.findFirst({ where: { tenantId: tenant.id, kind: "staff" } });
+  if (!existingStaffUser) {
+    const passwordHash = await hash(DEFAULT_STAFF_PASSWORD);
+    const staffUser = await prisma.user.create({
+      data: { tenantId: tenant.id, kind: "staff", email: staffEmail, passwordHash, passwordAlgo: "argon2id", emailVerifiedAt: new Date() },
+    });
+    await prisma.staff.create({
+      data: { tenantId: tenant.id, userId: staffUser.id, name: "Admin", position: "Owner", role: "owner" },
+    });
+    console.log(`  Staff login: ${staffEmail} / ${DEFAULT_STAFF_PASSWORD}`);
+  }
 
   console.log(`Seeded tenant "${input.name}" (${input.slug}) — ${input.hostname}`);
   return tenant;
