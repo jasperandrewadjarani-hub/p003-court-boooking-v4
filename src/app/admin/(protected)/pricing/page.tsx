@@ -1,5 +1,9 @@
-import { ComingSoon } from "@/components/admin/ComingSoon";
+import { resolveTenant } from "@/lib/tenant/resolve";
+import { listPriceMatrix } from "@/lib/admin/masterData";
+import { PricingManager } from "@/components/admin/PricingManager";
 
-export default function AdminPricingPage() {
-  return <ComingSoon title="Price Matrix" phase="Phase E3" />;
+export default async function AdminPricingPage() {
+  const tenant = await resolveTenant();
+  const rows = await listPriceMatrix(tenant.id);
+  return <PricingManager initialRows={rows} />;
 }

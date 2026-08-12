@@ -6,6 +6,23 @@ import { getDispatchGrid } from "@/lib/admin/dispatchGrid";
 import { listBookings, type BookingFilters } from "@/lib/admin/bookings";
 import { recordPayment } from "@/lib/admin/payments";
 import { withTenant } from "@/lib/tenant/withTenant";
+import {
+  listCourts,
+  saveCourt,
+  deleteCourt,
+  type CourtInput,
+  listPriceMatrix,
+  savePriceMatrixRow,
+  deletePriceMatrixRow,
+  type PriceMatrixInput,
+  listMembershipsAdmin,
+  saveMembership,
+  type MembershipInput,
+  listHolidays,
+  saveHoliday,
+  deleteHoliday,
+  type HolidayInput,
+} from "@/lib/admin/masterData";
 
 export async function fetchDispatchGridAction(dateKey: string) {
   const tenant = await resolveTenant();
@@ -104,4 +121,113 @@ export async function updateBookingStatusAction(bookingGroupId: string, newStatu
 
 export async function cancelBookingGroupAction(bookingGroupId: string) {
   return updateBookingStatusAction(bookingGroupId, "cancelled");
+}
+
+// ---------------------------------- Courts -------------------------------------
+
+export async function listCourtsAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return listCourts(tenant.id);
+}
+
+export async function saveCourtAction(input: CourtInput) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveCourt(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function deleteCourtAction(courtId: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await deleteCourt(tenant.id, courtId);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+// ------------------------------- Price Matrix -----------------------------------
+
+export async function listPriceMatrixAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return listPriceMatrix(tenant.id);
+}
+
+export async function savePriceMatrixRowAction(input: PriceMatrixInput, existingId?: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await savePriceMatrixRow(tenant.id, input, existingId);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function deletePriceMatrixRowAction(id: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await deletePriceMatrixRow(tenant.id, id);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+// -------------------------------- Memberships ------------------------------------
+
+export async function listMembershipsAdminAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return listMembershipsAdmin(tenant.id);
+}
+
+export async function saveMembershipAction(input: MembershipInput) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveMembership(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+// --------------------------------- Holidays ---------------------------------------
+
+export async function listHolidaysAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return listHolidays(tenant.id);
+}
+
+export async function saveHolidayAction(input: HolidayInput) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveHoliday(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function deleteHolidayAction(id: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await deleteHoliday(tenant.id, id);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
 }

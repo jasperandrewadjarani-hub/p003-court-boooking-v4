@@ -1,5 +1,9 @@
-import { ComingSoon } from "@/components/admin/ComingSoon";
+import { resolveTenant } from "@/lib/tenant/resolve";
+import { listCourts } from "@/lib/admin/masterData";
+import { CourtsManager } from "@/components/admin/CourtsManager";
 
-export default function AdminCourtsPage() {
-  return <ComingSoon title="Courts" phase="Phase E3" />;
+export default async function AdminCourtsPage() {
+  const tenant = await resolveTenant();
+  const courts = await listCourts(tenant.id);
+  return <CourtsManager initialCourts={courts} />;
 }
