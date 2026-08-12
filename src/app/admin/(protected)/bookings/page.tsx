@@ -1,5 +1,9 @@
-import { ComingSoon } from "@/components/admin/ComingSoon";
+import { resolveTenant } from "@/lib/tenant/resolve";
+import { listBookings } from "@/lib/admin/bookings";
+import { BookingsTable } from "@/components/admin/BookingsTable";
 
-export default function AdminBookingsPage() {
-  return <ComingSoon title="Bookings" phase="Phase E2" />;
+export default async function AdminBookingsPage() {
+  const tenant = await resolveTenant();
+  const bookings = await listBookings(tenant.id, {});
+  return <BookingsTable initialBookings={bookings} currency={tenant.currency} />;
 }
