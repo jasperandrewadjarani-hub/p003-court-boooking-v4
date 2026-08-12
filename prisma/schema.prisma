@@ -8,6 +8,16 @@
 // and RLS enable/force/policies are NOT expressible in the Prisma schema DSL
 // and are added by raw-SQL migrations layered on top of what this schema
 // generates — never by application code.
+//
+// IMPORTANT: every DateTime field below that represents an absolute instant
+// carries an explicit @db.Timestamptz(3). Prisma's default Postgres mapping
+// for a bare `DateTime` field is `timestamp` WITHOUT time zone, not
+// `timestamptz` — a real, empirically-discovered bug (see notes.md,
+// 2026-08-12) where `AT TIME ZONE` on a naive-timestamp column silently
+// computes the opposite direction of what was intended. Fields that are
+// deliberately date-only (birthday, holiday date, local_date, the
+// booking-sequence key) keep @db.Date instead, which has no time-zone
+// ambiguity to begin with.
 
 generator client {
   provider = "prisma-client"
@@ -119,8 +129,8 @@ model Tenant {
   senderName    String?      @map("sender_name")
   senderEmail   String?      @map("sender_email")
   featureFlags  Json         @default("{}") @map("feature_flags")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   domains         TenantDomain[]
   settings        TenantSetting[]
@@ -150,7 +160,7 @@ model TenantDomain {
   tenantId  String   @map("tenant_id") @db.Uuid
   hostname  String
   isPrimary Boolean  @default(false) @map("is_primary")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -169,7 +179,7 @@ model TenantSetting {
   tenantId  String   @map("tenant_id") @db.Uuid
   key       String
   value     Json
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -189,9 +199,9 @@ model User {
   passwordHash    String?       @map("password_hash")
   passwordAlgo    PasswordAlgo? @map("password_algo")
   passwordSalt    String?       @map("password_salt") // legacy sha256_v2 only
-  emailVerifiedAt DateTime?     @map("email_verified_at")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  emailVerifiedAt DateTime?     @map("email_verified_at") @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer?
@@ -217,7 +227,7 @@ model Customer {
   totalSpendMinor BigInt   @default(0) @map("total_spend_minor")
   loyaltyPoints  Int       @default(0) @map("loyalty_points")
   notes          String?
-  registeredAt   DateTime  @default(now()) @map("registered_at")
+  registeredAt   DateTime  @default(now()) @map("registered_at") @db.Timestamptz(3)
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -337,8 +347,8 @@ model BookingGroup {
   amountPaidMinor Int                 @default(0) @map("amount_paid_minor") // derived, recomputed from the Payments ledger — never written directly except by that recomputation
   idempotencyKey  String              @map("idempotency_key")
   promoId         String?             @map("promo_id") @db.Uuid
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -361,8 +371,8 @@ model Booking {
   tenantId              String             @map("tenant_id") @db.Uuid
   bookingGroupId        String             @map("booking_group_id") @db.Uuid
   courtId               String             @map("court_id") @db.Uuid
-  startsAt              DateTime           @map("starts_at")
-  endsAt                DateTime           @map("ends_at")
+  startsAt              DateTime           @map("starts_at") @db.Timestamptz(3)
+  endsAt                DateTime           @map("ends_at") @db.Timestamptz(3)
   turnoverBufferMinutes Int                @map("turnover_buffer_minutes") // snapshot from tenant_settings at creation
   tz                    String             // snapshot, keeps local_date stable across tenant tz changes
   // localDate and blockRange are populated by the BEFORE INSERT/UPDATE
@@ -376,8 +386,8 @@ model Booking {
   players               Int                @default(2)
   priceMinor            Int                @map("price_minor")
   status                BookingStatus      @default(reserved)
-  createdAt             DateTime           @default(now()) @map("created_at")
-  updatedAt             DateTime           @updatedAt @map("updated_at")
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
@@ -418,7 +428,7 @@ model Payment {
   totalMinor     Int           @map("total_minor")
   receiptNumber  String        @map("receipt_number")
   staffUserId    String?       @map("staff_user_id") @db.Uuid
-  collectedAt    DateTime      @default(now()) @map("collected_at")
+  collectedAt    DateTime      @default(now()) @map("collected_at") @db.Timestamptz(3)
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Restrict)
@@ -442,10 +452,10 @@ model Promo {
   discountValue  Int               @map("discount_value") // percent (0-100) or minor units, per discountType
   maxRedemptions Int               @map("max_redemptions")
   redeemed       Int               @default(0)
-  startsAt       DateTime          @map("starts_at")
-  endsAt         DateTime          @map("ends_at")
+  startsAt       DateTime          @map("starts_at") @db.Timestamptz(3)
+  endsAt         DateTime          @map("ends_at") @db.Timestamptz(3)
   active         Boolean           @default(true)
-  createdAt      DateTime          @default(now()) @map("created_at")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookingGroups BookingGroup[]
@@ -466,7 +476,7 @@ model PromoRedemption {
   promoId        String   @map("promo_id") @db.Uuid
   bookingGroupId String   @unique @map("booking_group_id") @db.Uuid
   discountMinor  Int      @map("discount_minor")
-  redeemedAt     DateTime @default(now()) @map("redeemed_at")
+  redeemedAt     DateTime @default(now()) @map("redeemed_at") @db.Timestamptz(3)
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   promo        Promo        @relation(fields: [promoId], references: [id], onDelete: Restrict)
@@ -490,9 +500,9 @@ model Receipt {
   mimeType       String    @map("mime_type")
   bytes          Int
   uploadedByUserId String  @map("uploaded_by_user_id") @db.Uuid
-  uploadedAt     DateTime  @default(now()) @map("uploaded_at")
+  uploadedAt     DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz(3)
   verifiedByUserId String? @map("verified_by_user_id") @db.Uuid
-  verifiedAt     DateTime? @map("verified_at")
+  verifiedAt     DateTime? @map("verified_at") @db.Timestamptz(3)
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
@@ -516,8 +526,8 @@ model EmailOutbox {
   status      EmailOutboxStatus @default(queued)
   attempts    Int               @default(0)
   lastError   String?           @map("last_error")
-  createdAt   DateTime          @default(now()) @map("created_at")
-  sentAt      DateTime?         @map("sent_at")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt      DateTime?         @map("sent_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -537,7 +547,7 @@ model AuditLog {
   entityId   String   @map("entity_id")
   action     String
   details    Json      @default("{}")
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -554,7 +564,7 @@ model JobRun {
   tenantId  String   @map("tenant_id") @db.Uuid
   job       String
   windowKey String   @map("window_key")
-  ranAt     DateTime @default(now()) @map("ran_at")
+  ranAt     DateTime @default(now()) @map("ran_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
