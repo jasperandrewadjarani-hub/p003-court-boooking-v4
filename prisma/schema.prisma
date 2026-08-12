@@ -1,15 +1,13 @@
 // P003 Court Booking System v4 — Prisma schema
-// Core tables per P_003_V4MasterPlan_(2026-08).md §4.1.
-// This is a Phase-0 subset: tenants, tenant_domains, tenant_settings, users,
-// customers, staff, courts, memberships, price_matrix, holidays,
-// booking_groups, bookings, booking_sequences. Payments, promos, receipts,
-// email_outbox, audit_log, job_runs, and Auth.js adapter tables land in
-// Phase 1 alongside the rest of the booking transaction (master plan §4.4).
+// Full core schema per P_003_V4MasterPlan_(2026-08).md §4.1, except Auth.js's
+// own adapter tables (sessions/accounts/verification_tokens), deferred to
+// Phase 2 when Auth.js is actually wired up — guessing their exact required
+// shape now risks redoing it wrong.
 //
 // The GiST exclusion constraint (§4.2), the block_range/local_date trigger,
 // and RLS enable/force/policies are NOT expressible in the Prisma schema DSL
-// and are added by a raw-SQL migration layered on top of the migration this
-// schema generates — never by application code.
+// and are added by raw-SQL migrations layered on top of what this schema
+// generates — never by application code.
 
 generator client {
   provider = "prisma-client"
@@ -54,7 +52,13 @@ enum CourtStatus {
   closed
 }
 
-enum BookingGroupStatus {
+// v2 stores one Status per Bookings row, kept in sync across a group by
+// updateBookingGroupFields_ — group and item status are conceptually the
+// same vocabulary, so BookingGroup.status and Booking.status share this one
+// enum rather than drifting into two. The exclusion constraint's WHERE
+// clause filters on exactly these 4 "active" values (master plan §4.2),
+// matching v2's activeBookingStatuses_() precisely.
+enum BookingStatus {
   reserved
   confirmed
   checked_in
@@ -80,9 +84,23 @@ enum BookingSource {
   staff
 }
 
-enum BookingItemStatus {
-  active
-  cancelled
+enum PaymentMethod {
+  cash
+  gcash
+  maya
+  credit_card
+  bank_transfer
+}
+
+enum PromoDiscountType {
+  percent
+  fixed_minor
+}
+
+enum EmailOutboxStatus {
+  queued
+  sent
+  failed
 }
 
 // -------------------------------- Tenancy -----------------------------------
@@ -116,6 +134,13 @@ model Tenant {
   bookingGroups   BookingGroup[]
   bookings        Booking[]
   bookingSequences BookingSequence[]
+  payments        Payment[]
+  promos          Promo[]
+  promoRedemptions PromoRedemption[]
+  receipts        Receipt[]
+  emailOutbox     EmailOutbox[]
+  auditLog        AuditLog[]
+  jobRuns         JobRun[]
 
   @@map("tenants")
 }
@@ -303,22 +328,25 @@ model BookingGroup {
   tenantId        String              @map("tenant_id") @db.Uuid
   reference       String?             // "BK-YYYYMMDD-NNN", assigned post-insert (master plan §4.4 step 4)
   customerId      String              @map("customer_id") @db.Uuid
-  status          BookingGroupStatus  @default(reserved)
+  status          BookingStatus       @default(reserved)
   paymentStatus   PaymentStatus       @default(unpaid) @map("payment_status")
   source          BookingSource       @default(web_app)
   staffUserId     String?             @map("staff_user_id") @db.Uuid
   notes           String?
   totalMinor      Int                 @default(0) @map("total_minor")
-  amountPaidMinor Int                 @default(0) @map("amount_paid_minor") // derived, recomputed from Payments ledger in Phase 1
-  receiptObjectKey String?            @map("receipt_object_key")
+  amountPaidMinor Int                 @default(0) @map("amount_paid_minor") // derived, recomputed from the Payments ledger — never written directly except by that recomputation
   idempotencyKey  String              @map("idempotency_key")
-  promoId         String?             @map("promo_id") @db.Uuid // FK added when the promos table lands (Phase 1)
+  promoId         String?             @map("promo_id") @db.Uuid
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  promo    Promo?    @relation(fields: [promoId], references: [id], onDelete: SetNull)
   bookings Booking[]
+  payments Payment[]
+  receipts Receipt[]
+  promoRedemption PromoRedemption?
 
   @@unique([tenantId, idempotencyKey])
   @@unique([tenantId, reference])
@@ -347,7 +375,7 @@ model Booking {
   durationMinutes       Int                @map("duration_minutes")
   players               Int                @default(2)
   priceMinor            Int                @map("price_minor")
-  status                BookingItemStatus  @default(active)
+  status                BookingStatus      @default(reserved)
   createdAt             DateTime           @default(now()) @map("created_at")
   updatedAt             DateTime           @updatedAt @map("updated_at")
 
@@ -372,4 +400,164 @@ model BookingSequence {
 
   @@id([tenantId, localDate])
   @@map("booking_sequences")
+}
+
+// -------------------------------- Payments & promos ---------------------------
+
+/// v2 Payments — the authoritative collection ledger (distinct from the
+/// repeated Bookings-sheet Amount Paid field it replaces). amountPaidMinor
+/// on BookingGroup is recomputed FROM this ledger, never the other way.
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  bookingGroupId String        @map("booking_group_id") @db.Uuid
+  method         PaymentMethod
+  amountMinor    Int           @map("amount_minor")
+  discountMinor  Int           @default(0) @map("discount_minor")
+  taxMinor       Int           @default(0) @map("tax_minor")
+  totalMinor     Int           @map("total_minor")
+  receiptNumber  String        @map("receipt_number")
+  staffUserId    String?       @map("staff_user_id") @db.Uuid
+  collectedAt    DateTime      @default(now()) @map("collected_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId, collectedAt])
+  @@index([tenantId, bookingGroupId])
+  @@map("payments")
+}
+
+/// The atomic "first N bookings" discount pattern (master plan §4.5):
+/// UPDATE promos SET redeemed = redeemed + 1 WHERE redeemed < max_redemptions
+/// RETURNING redeemed — zero rows back means "exhausted", a normal outcome,
+/// never an error. Never read-then-write from application code.
+model Promo {
+  id             String            @id @default(uuid()) @db.Uuid
+  tenantId       String            @map("tenant_id") @db.Uuid
+  name           String
+  code           String
+  discountType   PromoDiscountType @map("discount_type")
+  discountValue  Int               @map("discount_value") // percent (0-100) or minor units, per discountType
+  maxRedemptions Int               @map("max_redemptions")
+  redeemed       Int               @default(0)
+  startsAt       DateTime          @map("starts_at")
+  endsAt         DateTime          @map("ends_at")
+  active         Boolean           @default(true)
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingGroups BookingGroup[]
+  redemptions  PromoRedemption[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active, startsAt, endsAt])
+  @@map("promos")
+}
+
+/// Ledger row per successful redemption — makes the atomic counter above
+/// auditable and reconcilable (master plan §4.5), and its
+/// UNIQUE(promoId, bookingGroupId) is a second, independent guard against a
+/// booking group ever being double-counted against the same promo.
+model PromoRedemption {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  promoId        String   @map("promo_id") @db.Uuid
+  bookingGroupId String   @unique @map("booking_group_id") @db.Uuid
+  discountMinor  Int      @map("discount_minor")
+  redeemedAt     DateTime @default(now()) @map("redeemed_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promo        Promo        @relation(fields: [promoId], references: [id], onDelete: Restrict)
+  bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, promoId, bookingGroupId])
+  @@map("promo_redemptions")
+}
+
+// -------------------------------- Receipts & jobs ------------------------------
+
+/// Uploaded proof-of-payment metadata. A booking group can accumulate more
+/// than one upload over time (re-upload after a rejected receipt), unlike
+/// v2's single overwritable Receipt URL field — verifiedBy/At tracks staff
+/// review per upload rather than per booking.
+model Receipt {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  bookingGroupId String    @map("booking_group_id") @db.Uuid
+  objectKey      String    @map("object_key") // Supabase Storage path
+  mimeType       String    @map("mime_type")
+  bytes          Int
+  uploadedByUserId String  @map("uploaded_by_user_id") @db.Uuid
+  uploadedAt     DateTime  @default(now()) @map("uploaded_at")
+  verifiedByUserId String? @map("verified_by_user_id") @db.Uuid
+  verifiedAt     DateTime? @map("verified_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, bookingGroupId])
+  @@index([tenantId, verifiedAt]) // NULL verifiedAt = pending review queue
+  @@map("receipts")
+}
+
+/// Queued transactional email — enqueued post-commit inside the same request
+/// that triggered it, drained out of band by a cron job (master plan §4.4,
+/// §6). No user-facing request ever awaits a Resend call directly.
+model EmailOutbox {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  template    String
+  toAddresses String[]          @map("to_addresses")
+  ccAddresses String[]          @default([]) @map("cc_addresses")
+  bccAddresses String[]         @default([]) @map("bcc_addresses")
+  payload     Json
+  status      EmailOutboxStatus @default(queued)
+  attempts    Int               @default(0)
+  lastError   String?           @map("last_error")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  sentAt      DateTime?         @map("sent_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@map("email_outbox")
+}
+
+/// v2 AuditLog — actor, action, entity, details. Non-blocking by design
+/// (master plan §4.4 step 5 runs it inside the cheap booking transaction,
+/// but a failure here must never roll back the transaction it's logging).
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  actorKind  String   @map("actor_kind") // "customer" | "staff" | "system" | "platform"
+  entity     String
+  entityId   String   @map("entity_id")
+  action     String
+  details    Json      @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entity, entityId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("audit_log")
+}
+
+/// Cron idempotency — UNIQUE(tenant_id, job, window_key) means a retried or
+/// overlapping cron invocation for the same job+window is a safe no-op,
+/// never a duplicate run (e.g. two overlapping reminder-email sends).
+model JobRun {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  job       String
+  windowKey String   @map("window_key")
+  ranAt     DateTime @default(now()) @map("ran_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, job, windowKey])
+  @@map("job_runs")
 }
