@@ -9,6 +9,9 @@ import { CourtGrid, slotKey } from "@/components/booking/CourtGrid";
 import { CartBar, type CartItem } from "@/components/booking/CartBar";
 import { AccountModal } from "@/components/booking/AccountModal";
 import { MyBookingsPanel } from "@/components/booking/MyBookingsPanel";
+import { SuccessModal } from "@/components/booking/SuccessModal";
+import { ReceiptReminderModal } from "@/components/booking/ReceiptReminderModal";
+import type { PaymentSettings } from "@/lib/booking/paymentSettings";
 
 interface TenantInfo {
   name: string;
@@ -49,19 +52,22 @@ function formatTime(hhmm: string): string {
 }
 
 /**
- * NOTE — Phase D scope not yet built: receipt upload/payment screen after a
- * successful booking. Everything else — real multi-court/multi-slot cart
- * (Phase B) and real OTP/password customer accounts (Phase C, replacing the
- * old find-or-create-by-email trust model) — is live.
+ * Full customer-facing flow: multi-court/multi-slot cart (Phase B), real
+ * OTP/password accounts (Phase C), and the post-booking payment/receipt
+ * screen (Phase D) are all live.
  */
 export function BookingPage({
   tenant,
   initialGrid,
   memberships,
+  paymentSettings,
+  reservationHoldMinutes,
 }: {
   tenant: TenantInfo;
   initialGrid: AvailabilityGrid;
   memberships: MembershipOption[];
+  paymentSettings: PaymentSettings;
+  reservationHoldMinutes: number;
 }) {
   const [dateKey, setDateKey] = useState(initialGrid.date);
   const [grid, setGrid] = useState(initialGrid);
@@ -71,7 +77,9 @@ export function BookingPage({
   const [membershipType, setMembershipType] = useState("");
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", players: 4 });
   const [preview, setPreview] = useState({ totalMinor: 0, discountMinor: 0 });
-  const [status, setStatus] = useState<{ kind: "idle" | "success" | "error"; message?: string; reference?: string; totalMinor?: number }>({ kind: "idle" });
+  const [status, setStatus] = useState<{ kind: "idle" | "error"; message?: string }>({ kind: "idle" });
+  const [completedBooking, setCompletedBooking] = useState<{ bookingGroupId: string; reference: string; totalMinor: number } | null>(null);
+  const [showReceiptReminder, setShowReceiptReminder] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [accountModal, setAccountModal] = useState<{ mode: "login" | "register"; devCode?: string } | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -157,7 +165,7 @@ export function BookingPage({
       });
       setAccountModal(null);
       if (res.ok) {
-        setStatus({ kind: "success", reference: res.result.reference, totalMinor: res.result.totalMinor });
+        setCompletedBooking({ bookingGroupId: res.result.bookingGroupId, reference: res.result.reference, totalMinor: res.result.totalMinor });
         setCart([]);
         const fresh = await fetchGridAction(dateKey);
         setGrid(fresh);
@@ -165,6 +173,17 @@ export function BookingPage({
         setStatus({ kind: "error", message: res.error });
       }
     });
+  }
+
+  // "Done" in SuccessModal — nag once if no receipt was uploaded (matches
+  // v2's ReceiptReminderModal), since the reservation auto-lapses after
+  // reservationHoldMinutes if unpaid (Phase B's sweepLapsedBookings).
+  function onSuccessDone(receiptUploaded: boolean) {
+    if (!receiptUploaded) {
+      setShowReceiptReminder(true);
+    } else {
+      setCompletedBooking(null);
+    }
   }
 
   const dateButtons = Array.from({ length: 7 }, (_, i) => todayKey(i));
@@ -255,22 +274,6 @@ export function BookingPage({
           <MyBookingsPanel currency={tenant.currency} />
         )}
 
-        {status.kind === "success" && (
-          <div className="panel" style={{ borderColor: "var(--accent-optic)" }}>
-            <div className="panel__title" style={{ color: "var(--accent-optic)" }}>
-              Booking Successful
-            </div>
-            <p className="mono">
-              Booking ID: <strong>{status.reference}</strong>
-            </p>
-            <div className="total-line">
-              <span>Total</span>
-              <span>
-                {tenant.currency} {((status.totalMinor ?? 0) / 100).toFixed(2)}
-              </span>
-            </div>
-          </div>
-        )}
         {status.kind === "error" && (
           <div className="panel" style={{ borderColor: "var(--accent-magenta)" }}>
             <span className="field-warning">{status.message}</span>
@@ -361,6 +364,29 @@ export function BookingPage({
           profile={{ firstName: form.firstName, lastName: form.lastName, phone: form.phone }}
           onAuthenticated={submitBooking}
           onClose={() => setAccountModal(null)}
+        />
+      )}
+
+      {completedBooking && !showReceiptReminder && (
+        <SuccessModal
+          bookingGroupId={completedBooking.bookingGroupId}
+          reference={completedBooking.reference}
+          totalMinor={completedBooking.totalMinor}
+          currency={tenant.currency}
+          reservationHoldMinutes={reservationHoldMinutes}
+          paymentSettings={paymentSettings}
+          onDone={onSuccessDone}
+        />
+      )}
+
+      {completedBooking && showReceiptReminder && (
+        <ReceiptReminderModal
+          reservationHoldMinutes={reservationHoldMinutes}
+          onReturnToUpload={() => setShowReceiptReminder(false)}
+          onProceedAnyway={() => {
+            setShowReceiptReminder(false);
+            setCompletedBooking(null);
+          }}
         />
       )}
     </main>

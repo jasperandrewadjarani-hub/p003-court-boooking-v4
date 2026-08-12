@@ -71,6 +71,21 @@ async function seedTenant(input: {
     },
   });
 
+  await prisma.tenantSetting.upsert({
+    where: { tenantId_key: { tenantId: tenant.id, key: "payment_settings" } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      key: "payment_settings",
+      value: {
+        gcashNumber: "0917 000 0000",
+        gcashAccountName: input.name,
+        paymentInstructions: "Send the exact amount via GCash, then upload your receipt below.",
+        qrImageUrl: null,
+      },
+    },
+  });
+
   for (const court of input.courts) {
     await prisma.court.upsert({
       where: { tenantId_code: { tenantId: tenant.id, code: court.code } },

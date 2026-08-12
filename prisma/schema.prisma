@@ -546,9 +546,14 @@ model Receipt {
   id             String    @id @default(uuid()) @db.Uuid
   tenantId       String    @map("tenant_id") @db.Uuid
   bookingGroupId String    @map("booking_group_id") @db.Uuid
-  objectKey      String    @map("object_key") // Supabase Storage path
+  objectKey      String    @map("object_key") // Supabase Storage path once configured; "local:<id>" for the $0 Postgres-bytea fallback (src/lib/storage/receipts.ts)
   mimeType       String    @map("mime_type")
   bytes          Int
+  // Only populated by the local-storage fallback transport — no Supabase
+  // Storage credentials (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY) exist yet
+  // in .env.local, same situation as Resend for email (see notes.md
+  // 2026-08-12). NULL once objectKey points to real Supabase Storage.
+  data           Bytes?
   uploadedByUserId String  @map("uploaded_by_user_id") @db.Uuid
   uploadedAt     DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz(3)
   verifiedByUserId String? @map("verified_by_user_id") @db.Uuid
