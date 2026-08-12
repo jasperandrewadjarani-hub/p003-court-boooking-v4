@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import { fetchGridAction, createBookingAction } from "@/app/actions";
 import type { AvailabilityGrid } from "@/lib/booking/availability";
 
@@ -34,10 +34,16 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 // argument — a real bug hit while testing this slice (server rendered
 // "Wed 12 Aug", client rendered "Wed, 12 Aug", React discarded and
 // re-rendered the whole tree). A fixed lookup table is deterministic.
-function formatDateChip(dateKey: string): string {
+function formatDateChip(dateKey: string): { weekday: string; day: string } {
   const [y, m, d] = dateKey.split("-").map(Number);
   const date = new Date(y, m - 1, d);
-  return `${WEEKDAYS[date.getDay()]} ${d} ${MONTHS[m - 1]}`;
+  return { weekday: WEEKDAYS[date.getDay()], day: `${d} ${MONTHS[m - 1]}` };
+}
+
+function formatDateLabel(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return `${WEEKDAYS[date.getDay()]}, ${d} ${MONTHS[m - 1]} ${y}`;
 }
 
 function formatTime(hhmm: string): string {
@@ -46,17 +52,28 @@ function formatTime(hhmm: string): string {
   return `${hour12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
 }
 
+/**
+ * NOTE — Phase A scope only (VOLT visual port). Real markup/class names
+ * from v2's Index.html, real HUD grid, real cart-bar/modal components. Still
+ * single-slot selection under the hood (the cart-bar below currently holds
+ * at most one item) — the actual multi-court/multi-slot cart mechanic is
+ * Phase B, which slots into this same cart-bar/modal shell. Membership
+ * pricing, real customer accounts, and receipt upload are Phase B/C/D.
+ */
 export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initialGrid: AvailabilityGrid }) {
   const [dateKey, setDateKey] = useState(initialGrid.date);
   const [grid, setGrid] = useState(initialGrid);
   const [selected, setSelected] = useState<SelectedSlot | null>(null);
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", players: 2 });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [tab, setTab] = useState<"book" | "mine">("book");
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", players: 4 });
   const [status, setStatus] = useState<{ kind: "idle" | "success" | "error"; message?: string; reference?: string; totalMinor?: number }>({ kind: "idle" });
   const [isPending, startTransition] = useTransition();
 
   function loadDate(key: string) {
     setDateKey(key);
     setSelected(null);
+    setModalOpen(false);
     startTransition(async () => {
       const data = await fetchGridAction(key);
       setGrid(data);
@@ -66,6 +83,10 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
   function onSlotClick(courtId: string, courtName: string, start: string, end: string) {
     setSelected({ courtId, courtName, start, end });
     setStatus({ kind: "idle" });
+  }
+
+  function removeSelected() {
+    setSelected(null);
   }
 
   function submitBooking() {
@@ -89,6 +110,7 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
       if (res.ok) {
         setStatus({ kind: "success", reference: res.result.reference, totalMinor: res.result.totalMinor });
         setSelected(null);
+        setModalOpen(false);
         const fresh = await fetchGridAction(dateKey);
         setGrid(fresh);
       } else {
@@ -99,105 +121,201 @@ export function BookingPage({ tenant, initialGrid }: { tenant: TenantInfo; initi
 
   const dateButtons = Array.from({ length: 7 }, (_, i) => todayKey(i));
 
+  const occupancyText = useMemo(() => {
+    if (!grid.courts.length) return "SYNCING COURT STATUS";
+    const parts = grid.courts.map((c) => {
+      const total = c.slots.length || 1;
+      const booked = c.slots.filter((s) => s.status === "booked").length;
+      return `${c.name.toUpperCase()}: ${Math.round((booked / total) * 100)}%`;
+    });
+    return `${tenant.name.toUpperCase()} :// ${formatDateLabel(dateKey).toUpperCase()} OCCUPANCY — ${parts.join(" · ")} :: TAP OPEN SLOTS TO BUILD YOUR BOOKING ::`;
+  }, [grid, dateKey, tenant.name]);
+
   return (
-    <main className="min-h-screen p-4 md:p-8" style={{ ["--tenant-primary" as string]: tenant.primaryColor, ["--tenant-accent" as string]: tenant.accentColor }}>
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold" style={{ color: "var(--tenant-primary)" }}>{tenant.name}</h1>
-        <p className="text-sm opacity-60 font-mono">
-          Test slice — no login yet, courts book instantly by email. Not the final booking flow.
-        </p>
+    <main style={{ ["--tenant-primary" as string]: tenant.primaryColor, ["--tenant-accent" as string]: tenant.accentColor }}>
+      <div className="jt-brand-bar">
+        <a href="https://www.facebook.com/profile.php?id=61590234100280" target="_blank" rel="noopener noreferrer">
+          Powered by JT Consulting &amp; Analytics
+        </a>
+      </div>
+
+      <div className="ticker">
+        <div className="ticker__track">{occupancyText}</div>
+      </div>
+
+      <header className="hud">
+        <h1 className="brand">
+          <span>{tenant.name}</span>
+        </h1>
+        <div className="brand-sub">LIVE COURT AVAILABILITY — TAP SLOTS TO BUILD YOUR BOOKING</div>
       </header>
 
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {dateButtons.map((key) => (
-          <button
-            key={key}
-            onClick={() => loadDate(key)}
-            className="px-3 py-2 rounded text-sm font-mono whitespace-nowrap border"
-            style={{
-              borderColor: key === dateKey ? "var(--tenant-primary)" : "var(--line-grid)",
-              background: key === dateKey ? "var(--tenant-primary)" : "transparent",
-              color: key === dateKey ? "#060A10" : "var(--text-primary)",
-            }}
-          >
-            {formatDateChip(key)}
-          </button>
-        ))}
-      </div>
-
-      {status.kind === "success" && (
-        <div className="mb-4 p-4 rounded border" style={{ borderColor: "var(--success)", background: "rgba(61,255,176,0.08)" }}>
-          <strong>Booked — {status.reference}</strong>
-          <div className="text-sm opacity-80">Total: {tenant.currency} {((status.totalMinor ?? 0) / 100).toFixed(2)}</div>
+      <div className="shell">
+        <div className="tabs">
+          <div className={`tab ${tab === "book" ? "active" : ""}`} onClick={() => setTab("book")}>
+            Book a Court
+          </div>
+          <div className={`tab ${tab === "mine" ? "active" : ""}`} onClick={() => setTab("mine")}>
+            My Bookings
+          </div>
         </div>
-      )}
-      {status.kind === "error" && (
-        <div className="mb-4 p-4 rounded border" style={{ borderColor: "var(--tenant-accent)", background: "rgba(255,60,60,0.08)" }}>
-          {status.message}
-        </div>
-      )}
 
-      <div className="overflow-x-auto border rounded" style={{ borderColor: "var(--line-grid)" }} aria-busy={isPending}>
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr>
-              <th className="p-2 text-left sticky left-0" style={{ background: "var(--bg-panel)" }}>Time</th>
-              {grid.courts.map((c) => (
-                <th key={c.id} className="p-2 text-left whitespace-nowrap">{c.name}<div className="text-xs opacity-60 font-normal">{c.description}</div></th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grid.courts[0]?.slots.map((_, i) => (
-              <tr key={i}>
-                <td className="p-2 font-mono text-xs sticky left-0" style={{ background: "var(--bg-panel)" }}>
-                  {formatTime(grid.courts[0].slots[i].start)}
-                </td>
-                {grid.courts.map((court) => {
-                  const slot = court.slots[i];
-                  const isSelected = selected?.courtId === court.id && selected.start === slot.start;
-                  const clickable = slot.status === "available";
+        {tab === "book" ? (
+          <>
+            <div className="panel">
+              <div className="panel__title">Select Date</div>
+              <div className="date-row">
+                {dateButtons.map((key) => {
+                  const chip = formatDateChip(key);
                   return (
-                    <td key={court.id} className="p-1">
-                      <button
-                        disabled={!clickable}
-                        onClick={() => clickable && onSlotClick(court.id, court.name, slot.start, slot.end)}
-                        className="w-full h-8 rounded text-xs"
-                        style={{
-                          background: isSelected ? "var(--tenant-primary)" : slot.status === "available" ? "rgba(61,255,176,0.12)" : slot.status === "booked" ? "rgba(255,60,60,0.12)" : "rgba(120,120,120,0.12)",
-                          color: isSelected ? "#060A10" : "var(--text-dim)",
-                          cursor: clickable ? "pointer" : "default",
-                        }}
-                      >
-                        {isSelected ? "Selected" : slot.status === "available" ? "Open" : slot.status === "booked" ? "Booked" : "Maint."}
-                      </button>
-                    </td>
+                    <button key={key} type="button" className={`date-chip ${key === dateKey ? "active" : ""}`} onClick={() => loadDate(key)}>
+                      <strong>{chip.day}</strong>
+                      <span>{chip.weekday}</span>
+                    </button>
                   );
                 })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            </div>
+
+            <div className="panel grid-panel-wide" style={{ marginBottom: 0 }}>
+              <div className="panel__title">
+                Court Grid — <span className="mono dim">{formatDateLabel(dateKey)}</span>
+              </div>
+              <p className="dim mono" style={{ fontSize: 11, marginTop: -8 }}>
+                Tap an open slot to select it. Updates live — no refresh needed.
+              </p>
+              <div className="grid-wrap" key={dateKey} aria-busy={isPending}>
+                <div
+                  className="court-grid"
+                  style={{ ["--court-count" as string]: grid.courts.length || 1 }}
+                >
+                  <div className="head" />
+                  {grid.courts.map((c) => (
+                    <div className="head" key={c.id}>
+                      <strong>{c.name}</strong>
+                      <span>{c.description ?? (c.indoor ? "Indoor" : "Outdoor")}</span>
+                    </div>
+                  ))}
+                  {grid.courts[0]?.slots.map((_, i) => (
+                    <Fragment key={i}>
+                      <div className="time-label">{formatTime(grid.courts[0].slots[i].start)}</div>
+                      {grid.courts.map((court) => {
+                        const slot = court.slots[i];
+                        const isSelected = selected?.courtId === court.id && selected.start === slot.start;
+                        const clickable = slot.status === "available";
+                        const classes = ["slot", slot.status, isSelected ? "selected" : ""].filter(Boolean).join(" ");
+                        return (
+                          <div
+                            key={court.id}
+                            className={classes}
+                            onClick={() => clickable && onSlotClick(court.id, court.name, slot.start, slot.end)}
+                            role={clickable ? "button" : undefined}
+                          >
+                            <span className="slot-label">
+                              {isSelected ? "Selected" : slot.status === "available" ? "Open" : slot.status === "booked" ? "Booked" : "Maint."}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className={`cart-bar ${selected ? "visible" : ""}`}>
+              <div className="cart-bar__items">
+                {selected && (
+                  <span className="cart-chip">
+                    {selected.courtName} · {formatTime(selected.start)}–{formatTime(selected.end)}
+                    <button type="button" onClick={removeSelected} aria-label="Remove">
+                      ✕
+                    </button>
+                  </span>
+                )}
+              </div>
+              <div className="cart-bar__row">
+                <span className="mono dim">1 slot selected</span>
+                <button className="btn" onClick={() => setModalOpen(true)} disabled={!selected}>
+                  Continue
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="panel">
+            <div className="panel__title">Look Up My Bookings</div>
+            <p className="dim mono" style={{ fontSize: 13 }}>
+              Customer accounts and booking lookup are coming in the next build phase — not wired up yet.
+            </p>
+          </div>
+        )}
+
+        {status.kind === "success" && (
+          <div className="panel" style={{ borderColor: "var(--accent-optic)" }}>
+            <div className="panel__title" style={{ color: "var(--accent-optic)" }}>
+              Booking Successful
+            </div>
+            <p className="mono">
+              Booking ID: <strong>{status.reference}</strong>
+            </p>
+            <div className="total-line">
+              <span>Total</span>
+              <span>
+                {tenant.currency} {((status.totalMinor ?? 0) / 100).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
+        {status.kind === "error" && (
+          <div className="panel" style={{ borderColor: "var(--accent-magenta)" }}>
+            <span className="field-warning">{status.message}</span>
+          </div>
+        )}
       </div>
 
-      {selected && (
-        <div className="mt-4 p-4 rounded border max-w-md" style={{ borderColor: "var(--line-grid)" }}>
-          <h2 className="font-bold mb-2">{selected.courtName} — {formatTime(selected.start)}–{formatTime(selected.end)}</h2>
-          <div className="grid grid-cols-2 gap-2">
-            <input placeholder="First name" className="border rounded p-2 bg-transparent" style={{ borderColor: "var(--line-grid)" }} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
-            <input placeholder="Last name" className="border rounded p-2 bg-transparent" style={{ borderColor: "var(--line-grid)" }} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
-            <input placeholder="Email" type="email" className="border rounded p-2 bg-transparent col-span-2" style={{ borderColor: "var(--line-grid)" }} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <input placeholder="Phone" className="border rounded p-2 bg-transparent" style={{ borderColor: "var(--line-grid)" }} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            <input placeholder="Players" type="number" min={1} className="border rounded p-2 bg-transparent" style={{ borderColor: "var(--line-grid)" }} value={form.players} onChange={(e) => setForm({ ...form, players: Number(e.target.value) })} />
+      <footer>
+        <span>{tenant.name}</span>
+      </footer>
+      <div className="jt-brand-bar footer-bar">
+        <a href="https://www.facebook.com/profile.php?id=61590234100280" target="_blank" rel="noopener noreferrer">
+          Powered by JT Consulting &amp; Analytics
+        </a>
+      </div>
+
+      {modalOpen && selected && (
+        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <span className="close" onClick={() => setModalOpen(false)}>
+              [ ESC ]
+            </span>
+            <h3>Confirm Booking</h3>
+            <div className="summary-line">
+              <span>{selected.courtName}</span>
+              <strong>
+                {formatTime(selected.start)}–{formatTime(selected.end)}
+              </strong>
+            </div>
+
+            <label>First Name</label>
+            <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+            <label>Last Name</label>
+            <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+            <label>Mobile Number</label>
+            <input type="tel" placeholder="09XX XXX XXXX" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <label>Email (your booking account)</label>
+            <input type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <label>Number of Players</label>
+            <input type="number" min={1} value={form.players} onChange={(e) => setForm({ ...form, players: Number(e.target.value) })} />
+            <label>Membership</label>
+            <select disabled>
+              <option>No Membership</option>
+            </select>
+
+            <button className="btn block" style={{ marginTop: 18 }} onClick={submitBooking} disabled={isPending}>
+              {isPending ? "Booking…" : "Confirm Booking"}
+            </button>
           </div>
-          <button
-            onClick={submitBooking}
-            disabled={isPending}
-            className="mt-3 w-full py-2 rounded font-bold"
-            style={{ background: "var(--tenant-primary)", color: "#060A10" }}
-          >
-            {isPending ? "Booking..." : "Confirm Booking"}
-          </button>
         </div>
       )}
     </main>

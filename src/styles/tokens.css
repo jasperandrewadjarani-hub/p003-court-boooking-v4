@@ -9,6 +9,10 @@
   --bg-panel: #0d1520;
   --bg-raised: #121b29;
   --line-grid: #1c2733;
+  --accent-optic: #c6ff3d;
+  --accent-optic-dim: #7c9a2e;
+  --accent-magenta: #ff2e7e;
+  --accent-cyan: #2ee6ff;
   --success: #3dffb0;
   --text-primary: #e7f6f2;
   --text-dim: #7c93a3;
@@ -18,9 +22,13 @@
   --font-body: "IBM Plex Sans", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
 
-  /* Per-tenant overrides (set inline per request) — these fallbacks are the
-     v2 default "VOLT" palette, shown only if a tenant record is missing
-     branding, which should never happen once seeding is enforced. */
+  /* Per-tenant overrides (set inline per request) — scoped to just the
+     header brand color and the active date-chip (see components.css).
+     Everywhere else in the port deliberately references the fixed VOLT
+     triad (--accent-optic/--accent-magenta/--accent-cyan) directly, not
+     these — v2's skin is a fixed brand, not a per-tenant white-label
+     palette; see notes.md 2026-08-12 for why this is a scoped deviation
+     from the master plan's white-label framing, not the full skin. */
   --tenant-primary: #c6ff3d;
   --tenant-accent: #2ee6ff;
 }
@@ -30,6 +38,10 @@
   --bg-panel: #ffffff;
   --bg-raised: #eaf0e4;
   --line-grid: #d3ded0;
+  --accent-optic: #5c8a00;
+  --accent-optic-dim: #7c9a2e;
+  --accent-magenta: #c81760;
+  --accent-cyan: #0090a8;
   --success: #1e9a63;
   --text-primary: #0e1a12;
   --text-dim: #5b6b60;
