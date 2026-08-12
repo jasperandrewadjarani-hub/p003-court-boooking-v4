@@ -134,6 +134,8 @@ model Tenant {
 
   domains         TenantDomain[]
   settings        TenantSetting[]
+  sessions        Session[]
+  otpChallenges   OtpChallenge[]
   users           User[]
   customers       Customer[]
   staff           Staff[]
@@ -252,6 +254,54 @@ model Staff {
 
   @@index([tenantId])
   @@map("staff")
+}
+
+// ------------------------------ Sessions & OTP -------------------------------
+// Hand-rolled instead of Auth.js — see notes.md 2026-08-12 for the reasoning
+// (no tenant-scoping hook in Auth.js's adapter model; its Credentials
+// provider doesn't fit a 3-step OTP-register/password-login flow for two
+// separate user kinds). Postgres tables stand in for v2's PropertiesService/
+// CacheService, since Vercel functions are stateless per invocation.
+
+/// Opaque bearer token → hashed lookup. Never store the raw token — only
+/// tokenHash (SHA-256 of it). Two cookie namespaces at the application layer
+/// (customer_session / staff_session) both point here, distinguished by
+/// `kind`, so a customer token can never be presented as a staff token.
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  kind      UserKind
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, tokenHash])
+  @@index([tenantId, userId])
+  @@map("sessions")
+}
+
+/// Short-lived email verification codes — registration and password reset.
+/// codeHash only, never the raw code. One live challenge per
+/// (tenant, email, purpose) at a time — a resend before expiry reuses the
+/// existing row rather than issuing a second code (matches v2's
+/// sendCustomerChallenge_ "already sent" behavior).
+model OtpChallenge {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  emailHash String   @map("email_hash")
+  purpose   String // "register" | "reset"
+  codeHash  String   @map("code_hash")
+  attempts  Int      @default(0)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, emailHash, purpose])
+  @@map("otp_challenges")
 }
 
 // -------------------------------- Master data --------------------------------

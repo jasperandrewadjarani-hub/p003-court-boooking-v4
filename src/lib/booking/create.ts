@@ -15,10 +15,7 @@ export interface CreateBookingInput {
   dateKey: string; // "YYYY-MM-DD"
   items: CartItemInput[];
   players: number;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
+  customerId: string; // resolved server-side from the signed-in session (src/lib/auth/customerAuth.ts) — never trust a raw email field
   membershipType?: string;
 }
 
@@ -45,13 +42,13 @@ export class SlotTakenError extends Error {
 }
 
 /**
- * NOTE — reduced scope for the "clickable slice" milestone, still true here:
- * customer identification is "find or create by email" with no password/
- * session at all — anyone who knows an email can act as that customer. Real
- * auth (Argon2id, sessions) is Phase C. Do not treat a booking made through
- * this path as proof the real auth-gated flow works — it proves the
- * multi-item booking transaction and the exclusion constraint work under a
- * cart, which is the point of this slice.
+ * Customer identity is resolved server-side from the signed-in session
+ * (src/lib/auth/customerAuth.ts's getCurrentCustomer()) by the caller
+ * (src/app/actions.ts) BEFORE this function is ever called — this function
+ * trusts `input.customerId` completely and does no lookup/creation of its
+ * own, matching v2's "the signed-in email is the booking's customer,
+ * period" model. Do not call this with a customerId that wasn't just
+ * verified against an active session.
  *
  * Multi-item ("cart") semantics, matching v2's createBooking_: one checkout
  * can cover several courts and/or time slots at once. Every item becomes
@@ -88,32 +85,6 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
   // inverse of v2 where all of it was inside the lock").
   const { cart, courtsById } = await priceCart(input.tenantId, input.dateKey, input.items, input.membershipType);
 
-  // Find or create the customer (by email) OUTSIDE the booking-write
-  // transaction too — same reasoning, it's not part of the conflict-check
-  // critical section.
-  const customer = await withTenant(input.tenantId, async (tx) => {
-    const normalizedEmail = input.email.trim().toLowerCase();
-    const existingUser = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM users WHERE tenant_id = ${input.tenantId}::uuid AND lower(email) = ${normalizedEmail} LIMIT 1
-    `;
-    if (existingUser.length) {
-      const existingCustomer = await tx.customer.findUnique({ where: { userId: existingUser[0].id } });
-      if (existingCustomer) return existingCustomer;
-    }
-    const user = await tx.user.create({
-      data: { tenantId: input.tenantId, kind: "customer", email: normalizedEmail },
-    });
-    return tx.customer.create({
-      data: {
-        tenantId: input.tenantId,
-        userId: user.id,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        mobileNumber: input.phone,
-      },
-    });
-  });
-
   const idempotencyKey = crypto.randomUUID();
 
   try {
@@ -126,7 +97,7 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
       const group = await tx.bookingGroup.create({
         data: {
           tenantId: input.tenantId,
-          customerId: customer.id,
+          customerId: input.customerId,
           idempotencyKey,
           totalMinor: cart.totalMinor,
         },

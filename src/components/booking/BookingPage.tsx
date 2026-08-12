@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { fetchGridAction, createBookingAction, previewCartTotalAction } from "@/app/actions";
+import { beginCustomerBookingAuth } from "@/lib/auth/customerAuth";
 import type { AvailabilityGrid } from "@/lib/booking/availability";
 import type { MembershipOption } from "@/lib/booking/memberships";
 import { CourtGrid, slotKey } from "@/components/booking/CourtGrid";
 import { CartBar, type CartItem } from "@/components/booking/CartBar";
+import { AccountModal } from "@/components/booking/AccountModal";
+import { MyBookingsPanel } from "@/components/booking/MyBookingsPanel";
 
 interface TenantInfo {
   name: string;
@@ -46,12 +49,10 @@ function formatTime(hhmm: string): string {
 }
 
 /**
- * NOTE — Phase B scope: real multi-court/multi-slot cart (v2's actual
- * "click any open slot to toggle it into your cart, across any courts and
- * times, then check out once") — the specific feature the client asked
- * for by name. Customer identification is still "find or create by email"
- * with no password/session (Phase C); receipt upload/payment screen is
- * Phase D.
+ * NOTE — Phase D scope not yet built: receipt upload/payment screen after a
+ * successful booking. Everything else — real multi-court/multi-slot cart
+ * (Phase B) and real OTP/password customer accounts (Phase C, replacing the
+ * old find-or-create-by-email trust model) — is live.
  */
 export function BookingPage({
   tenant,
@@ -72,6 +73,8 @@ export function BookingPage({
   const [preview, setPreview] = useState({ totalMinor: 0, discountMinor: 0 });
   const [status, setStatus] = useState<{ kind: "idle" | "success" | "error"; message?: string; reference?: string; totalMinor?: number }>({ kind: "idle" });
   const [isPending, startTransition] = useTransition();
+  const [accountModal, setAccountModal] = useState<{ mode: "login" | "register"; devCode?: string } | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const selectedKeys = useMemo(() => new Set(cart.map((c) => c.key)), [cart]);
 
@@ -117,27 +120,45 @@ export function BookingPage({
     setCart((prev) => prev.filter((c) => c.key !== key));
   }
 
-  function submitBooking() {
+  // Step 1: booking modal "Continue → Sign In" — determines register vs.
+  // login by email (matches v2's beginCustomerBookingAuth exactly) and
+  // opens the account modal. Doesn't book anything yet.
+  function continueToAccount() {
     if (!cart.length) return;
     if (!form.firstName || !form.lastName || !form.email || !form.phone) {
       setStatus({ kind: "error", message: "Fill in all fields." });
       return;
     }
+    setAuthError(null);
+    startTransition(async () => {
+      try {
+        const result = await beginCustomerBookingAuth(form.email);
+        setModalOpen(false);
+        if (result.mode === "login") {
+          setAccountModal({ mode: "login" });
+        } else {
+          setAccountModal({ mode: "register", devCode: "devCode" in result ? result.devCode : undefined });
+        }
+      } catch (err) {
+        setAuthError(err instanceof Error ? err.message : "Something went wrong.");
+      }
+    });
+  }
+
+  // Step 2: called by AccountModal once registration/login succeeds — the
+  // session is now established, so the booking transaction can trust it.
+  function submitBooking() {
     startTransition(async () => {
       const res = await createBookingAction({
         dateKey,
         items: cart.map((c) => ({ courtId: c.courtId, startTime: c.start, endTime: c.end })),
         players: form.players,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        phone: form.phone,
         membershipType: membershipType || undefined,
       });
+      setAccountModal(null);
       if (res.ok) {
         setStatus({ kind: "success", reference: res.result.reference, totalMinor: res.result.totalMinor });
         setCart([]);
-        setModalOpen(false);
         const fresh = await fetchGridAction(dateKey);
         setGrid(fresh);
       } else {
@@ -231,12 +252,7 @@ export function BookingPage({
             />
           </>
         ) : (
-          <div className="panel">
-            <div className="panel__title">Look Up My Bookings</div>
-            <p className="dim mono" style={{ fontSize: 13 }}>
-              Customer accounts and booking lookup are coming in the next build phase — not wired up yet.
-            </p>
-          </div>
+          <MyBookingsPanel currency={tenant.currency} />
         )}
 
         {status.kind === "success" && (
@@ -329,11 +345,23 @@ export function BookingPage({
               </span>
             </div>
 
-            <button className="btn block" style={{ marginTop: 18 }} onClick={submitBooking} disabled={isPending}>
-              {isPending ? "Booking…" : "Confirm Booking"}
+            {authError && <div className="field-warning">{authError}</div>}
+            <button className="btn block" style={{ marginTop: 18 }} onClick={continueToAccount} disabled={isPending}>
+              {isPending ? "Working…" : "Continue → Sign In"}
             </button>
           </div>
         </div>
+      )}
+
+      {accountModal && (
+        <AccountModal
+          email={form.email}
+          mode={accountModal.mode}
+          devCode={accountModal.devCode}
+          profile={{ firstName: form.firstName, lastName: form.lastName, phone: form.phone }}
+          onAuthenticated={submitBooking}
+          onClose={() => setAccountModal(null)}
+        />
       )}
     </main>
   );
