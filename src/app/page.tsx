@@ -1,69 +1,66 @@
-import Image from "next/image";
+import { headers } from "next/headers";
+import { resolveTenant, TenantNotFoundError } from "@/lib/tenant/resolve";
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+// Phase 0 proof-of-concept page: resolves the tenant from the request
+// hostname and renders its branding. This is deliberately NOT the booking
+// UI (that's master plan Phase 2) — it exists to prove the full chain
+// (proxy -> header -> indexed DB lookup -> tenant-scoped render) works
+// end to end before any booking logic is built on top of it.
+export default async function Home() {
+  const headerList = await headers();
+  const hostname = headerList.get("x-tenant-hostname") ?? "(unknown host)";
+
+  try {
+    const tenant = await resolveTenant();
+    return (
+      <main
+        className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center"
+        style={{
+          // CSS-variable theming (master plan §6.1) — this is the actual
+          // white-label mechanism: same components, per-tenant values.
+          ["--tenant-primary" as string]: tenant.primaryColor ?? "#000",
+          ["--tenant-accent" as string]: tenant.accentColor ?? "#666",
+        }}
+      >
+        <div
+          className="rounded-full px-4 py-1 text-xs font-mono uppercase tracking-wide"
+          style={{ background: "var(--tenant-accent)", color: "#060A10" }}
+        >
+          Tenant resolved
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+        <h1 className="text-4xl font-bold" style={{ color: "var(--tenant-primary)" }}>
+          {tenant.name}
+        </h1>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-left font-mono opacity-70">
+          <dt>slug</dt>
+          <dd>{tenant.slug}</dd>
+          <dt>hostname</dt>
+          <dd>{hostname}</dd>
+          <dt>timezone</dt>
+          <dd>{tenant.timezone}</dd>
+          <dt>currency</dt>
+          <dd>{tenant.currency}</dd>
+        </dl>
+        <p className="max-w-md text-sm opacity-60">
+          Phase 0 foundations: multi-tenant host resolution + database
+          connectivity confirmed. Booking UI lands in Phase 2.
+        </p>
       </main>
-    </div>
-  );
+    );
+  } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return (
+        <main className="flex min-h-screen flex-col items-center justify-center gap-3 p-8 text-center">
+          <h1 className="text-2xl font-bold">No tenant bound to this hostname</h1>
+          <p className="max-w-md font-mono text-sm opacity-70">{hostname}</p>
+          <p className="max-w-md text-sm opacity-60">
+            Try one of the seeded dev tenants:{" "}
+            <code>dink-and-dunk.localhost:3000</code> or{" "}
+            <code>demo-facility.localhost:3000</code>.
+          </p>
+        </main>
+      );
+    }
+    throw error;
+  }
 }

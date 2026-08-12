@@ -1,0 +1,375 @@
+// P003 Court Booking System v4 — Prisma schema
+// Core tables per P_003_V4MasterPlan_(2026-08).md §4.1.
+// This is a Phase-0 subset: tenants, tenant_domains, tenant_settings, users,
+// customers, staff, courts, memberships, price_matrix, holidays,
+// booking_groups, bookings, booking_sequences. Payments, promos, receipts,
+// email_outbox, audit_log, job_runs, and Auth.js adapter tables land in
+// Phase 1 alongside the rest of the booking transaction (master plan §4.4).
+//
+// The GiST exclusion constraint (§4.2), the block_range/local_date trigger,
+// and RLS enable/force/policies are NOT expressible in the Prisma schema DSL
+// and are added by a raw-SQL migration layered on top of the migration this
+// schema generates — never by application code.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Prisma 7: the connection URL is no longer declared here at all — the
+  // CLI reads it from prisma.config.ts (DIRECT_URL), and the runtime
+  // PrismaClient reads it from the adapter in src/lib/db/prisma.ts
+  // (DATABASE_URL, pooled). Declaring `url` here is a hard schema error now.
+}
+
+// --------------------------------- Enums -----------------------------------
+
+enum TenantStatus {
+  active
+  suspended
+  archived
+}
+
+enum UserKind {
+  customer
+  staff
+}
+
+enum StaffRole {
+  owner
+  admin
+  staff
+}
+
+enum PasswordAlgo {
+  argon2id
+  sha256_v2 // legacy v2 import only; upgraded on login, 90-day sunset
+}
+
+enum CourtStatus {
+  available
+  maintenance
+  closed
+}
+
+enum BookingGroupStatus {
+  reserved
+  confirmed
+  checked_in
+  playing
+  finished
+  cancelled
+  lapsed
+  no_show
+}
+
+enum PaymentStatus {
+  unpaid
+  awaiting_verification
+  partial
+  paid
+  refunded
+}
+
+enum BookingSource {
+  walk_in
+  web_app
+  phone
+  staff
+}
+
+enum BookingItemStatus {
+  active
+  cancelled
+}
+
+// -------------------------------- Tenancy -----------------------------------
+
+model Tenant {
+  id            String       @id @default(uuid()) @db.Uuid
+  slug          String       @unique
+  name          String
+  status        TenantStatus @default(active)
+  timezone      String       @default("Asia/Manila")
+  currency      String       @default("PHP")
+  locale        String       @default("en-PH")
+  logoUrl       String?      @map("logo_url")
+  primaryColor  String?      @map("primary_color")
+  accentColor   String?      @map("accent_color")
+  senderName    String?      @map("sender_name")
+  senderEmail   String?      @map("sender_email")
+  featureFlags  Json         @default("{}") @map("feature_flags")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  domains         TenantDomain[]
+  settings        TenantSetting[]
+  users           User[]
+  customers       Customer[]
+  staff           Staff[]
+  courts          Court[]
+  memberships     Membership[]
+  priceMatrix     PriceMatrixRow[]
+  holidays        Holiday[]
+  bookingGroups   BookingGroup[]
+  bookings        Booking[]
+  bookingSequences BookingSequence[]
+
+  @@map("tenants")
+}
+
+model TenantDomain {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  hostname  String
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // No @@unique here on purpose: uniqueness is enforced by a case-insensitive
+  // functional index — CREATE UNIQUE INDEX ... (lower(hostname)) — added by
+  // the booking_constraints_and_rls raw-SQL migration. A plain @@unique here
+  // would fight that index on every future `migrate dev` (drift Prisma can't
+  // reconcile automatically). See that migration's header comment.
+  @@index([tenantId])
+  @@map("tenant_domains")
+}
+
+/// Typed business config — v2's Config sheet. One row per (tenant, key).
+model TenantSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@map("tenant_settings")
+}
+
+// ----------------------------- Identity & auth -------------------------------
+
+/// Auth identity for both customers and staff. UNIQUE (tenant_id, lower(email))
+/// enforced by a raw-SQL functional unique index (Prisma can't express lower()).
+model User {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  kind            UserKind
+  email           String
+  passwordHash    String?       @map("password_hash")
+  passwordAlgo    PasswordAlgo? @map("password_algo")
+  passwordSalt    String?       @map("password_salt") // legacy sha256_v2 only
+  emailVerifiedAt DateTime?     @map("email_verified_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer?
+  staff    Staff?
+
+  // No @@unique here on purpose: same reasoning as TenantDomain.hostname
+  // above — enforced by CREATE UNIQUE INDEX ... (tenant_id, lower(email))
+  // in the booking_constraints_and_rls migration instead.
+  @@map("users")
+}
+
+/// v2 Customers — profile, membership, visit/spend/loyalty totals.
+model Customer {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  userId         String    @unique @map("user_id") @db.Uuid
+  firstName      String    @map("first_name")
+  lastName       String    @map("last_name")
+  mobileNumber   String?   @map("mobile_number")
+  birthday       DateTime? @db.Date
+  membershipType String?   @map("membership_type")
+  totalVisits    Int       @default(0) @map("total_visits")
+  totalSpendMinor BigInt   @default(0) @map("total_spend_minor")
+  loyaltyPoints  Int       @default(0) @map("loyalty_points")
+  notes          String?
+  registeredAt   DateTime  @default(now()) @map("registered_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookingGroups BookingGroup[]
+
+  @@index([tenantId])
+  @@map("customers")
+}
+
+/// v2 Staff — name, position, role, active.
+model Staff {
+  id       String    @id @default(uuid()) @db.Uuid
+  tenantId String    @map("tenant_id") @db.Uuid
+  userId   String    @unique @map("user_id") @db.Uuid
+  name     String
+  position String?
+  role     StaffRole @default(staff)
+  active   Boolean   @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("staff")
+}
+
+// -------------------------------- Master data --------------------------------
+
+/// v2 Courts.
+model Court {
+  id              String      @id @default(uuid()) @db.Uuid
+  tenantId        String      @map("tenant_id") @db.Uuid
+  code            String
+  name            String
+  indoor          Boolean     @default(true)
+  status          CourtStatus @default(available)
+  surface         String?
+  lighting        String?
+  capacity        Int         @default(4)
+  airConditioned  Boolean     @default(false) @map("air_conditioned")
+  baseRateMinor   Int?        @map("base_rate_minor")
+  lightingFeeMinor Int?       @map("lighting_fee_minor")
+  description     String?
+  sortOrder       Int         @default(0) @map("sort_order")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("courts")
+}
+
+/// v2 Memberships.
+model Membership {
+  id              String  @id @default(uuid()) @db.Uuid
+  tenantId        String  @map("tenant_id") @db.Uuid
+  name            String
+  monthlyFeeMinor Int     @default(0) @map("monthly_fee_minor")
+  discountPercent Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  priorityBooking Boolean @default(false) @map("priority_booking")
+  freeHoursMonth  Decimal @default(0) @map("free_hours_month") @db.Decimal(6, 2)
+  active          Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("memberships")
+}
+
+/// v2 PriceMatrix — time-overlap pricing rules.
+model PriceMatrixRow {
+  id               String  @id @default(uuid()) @db.Uuid
+  tenantId         String  @map("tenant_id") @db.Uuid
+  dayType          String  @map("day_type") // "weekday" | "weekend"
+  startTime        String  @map("start_time") // "HH:MM", 24h
+  endTime          String  @map("end_time")
+  courtType        String  @map("court_type") // "indoor" | "outdoor"
+  pricePerHourMinor Int    @map("price_per_hour_minor")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, dayType, courtType])
+  @@map("price_matrix")
+}
+
+/// v2 Holidays.
+model Holiday {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  date           DateTime @db.Date
+  name           String
+  rateMultiplier Decimal  @default(1) @map("rate_multiplier") @db.Decimal(4, 2)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date])
+  @@index([tenantId])
+  @@map("holidays")
+}
+
+// -------------------------------- Bookings -----------------------------------
+
+/// The transaction group — v2's shared Booking ID across multiple court/time items.
+model BookingGroup {
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @map("tenant_id") @db.Uuid
+  reference       String?             // "BK-YYYYMMDD-NNN", assigned post-insert (master plan §4.4 step 4)
+  customerId      String              @map("customer_id") @db.Uuid
+  status          BookingGroupStatus  @default(reserved)
+  paymentStatus   PaymentStatus       @default(unpaid) @map("payment_status")
+  source          BookingSource       @default(web_app)
+  staffUserId     String?             @map("staff_user_id") @db.Uuid
+  notes           String?
+  totalMinor      Int                 @default(0) @map("total_minor")
+  amountPaidMinor Int                 @default(0) @map("amount_paid_minor") // derived, recomputed from Payments ledger in Phase 1
+  receiptObjectKey String?            @map("receipt_object_key")
+  idempotencyKey  String              @map("idempotency_key")
+  promoId         String?             @map("promo_id") @db.Uuid // FK added when the promos table lands (Phase 1)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  bookings Booking[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, reference])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("booking_groups")
+}
+
+/// One row per court/time item. block_range and local_date are set by a
+/// raw-SQL BEFORE INSERT/UPDATE trigger (master plan §4.2) — never by app code.
+model Booking {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  bookingGroupId        String             @map("booking_group_id") @db.Uuid
+  courtId               String             @map("court_id") @db.Uuid
+  startsAt              DateTime           @map("starts_at")
+  endsAt                DateTime           @map("ends_at")
+  turnoverBufferMinutes Int                @map("turnover_buffer_minutes") // snapshot from tenant_settings at creation
+  tz                    String             // snapshot, keeps local_date stable across tenant tz changes
+  // localDate and blockRange are populated by the BEFORE INSERT/UPDATE
+  // trigger from the booking_constraints_and_rls migration, never written
+  // by app code. blockRange uses Unsupported() because Prisma's schema DSL
+  // has no tstzrange type — this declaration exists purely so schema-diffing
+  // knows the column is intentional and never proposes dropping it.
+  localDate             DateTime?          @map("local_date") @db.Date
+  blockRange            Unsupported("tstzrange")? @map("block_range")
+  durationMinutes       Int                @map("duration_minutes")
+  players               Int                @default(2)
+  priceMinor            Int                @map("price_minor")
+  status                BookingItemStatus  @default(active)
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
+  court        Court        @relation(fields: [courtId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, bookingGroupId])
+  @@index([tenantId, localDate, courtId])
+  @@map("bookings")
+}
+
+/// (tenant_id, local_date) -> next_seq. Atomic reference generation, replaces
+/// v2's full-sheet scan (S5). Updated via `UPDATE ... RETURNING` inside the
+/// booking transaction, never read-then-write from application code.
+model BookingSequence {
+  tenantId  String   @map("tenant_id") @db.Uuid
+  localDate DateTime @map("local_date") @db.Date
+  nextSeq   Int      @default(1) @map("next_seq")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, localDate])
+  @@map("booking_sequences")
+}

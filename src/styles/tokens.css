@@ -1,0 +1,36 @@
+/* Ported from v2's CSS.html design tokens (VOLT palette) — see
+   P_003_V4MasterPlan_(2026-08).md §6.1: this is the actual white-label
+   mechanism. Structural tokens (backgrounds, radius, fonts) stay static
+   per theme; --tenant-primary/--tenant-accent are set per-request from the
+   resolved tenant row (src/lib/tenant/resolve.ts), never hardcoded here. */
+
+:root {
+  --bg-void: #060a10;
+  --bg-panel: #0d1520;
+  --bg-raised: #121b29;
+  --line-grid: #1c2733;
+  --success: #3dffb0;
+  --text-primary: #e7f6f2;
+  --text-dim: #7c93a3;
+  --radius: 2px;
+
+  --font-display: "Rajdhani", sans-serif;
+  --font-body: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  /* Per-tenant overrides (set inline per request) — these fallbacks are the
+     v2 default "VOLT" palette, shown only if a tenant record is missing
+     branding, which should never happen once seeding is enforced. */
+  --tenant-primary: #c6ff3d;
+  --tenant-accent: #2ee6ff;
+}
+
+[data-theme="light"] {
+  --bg-void: #f4f7f2;
+  --bg-panel: #ffffff;
+  --bg-raised: #eaf0e4;
+  --line-grid: #d3ded0;
+  --success: #1e9a63;
+  --text-primary: #0e1a12;
+  --text-dim: #5b6b60;
+}
