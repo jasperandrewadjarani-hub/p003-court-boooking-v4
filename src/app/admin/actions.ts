@@ -23,6 +23,23 @@ import {
   deleteHoliday,
   type HolidayInput,
 } from "@/lib/admin/masterData";
+import {
+  getGeneralSettings,
+  saveGeneralSettings,
+  type GeneralSettings,
+  getLoyaltySettings,
+  saveLoyaltySettings,
+  type LoyaltySettings,
+  getNotificationSettings,
+  saveNotificationSettings,
+  type NotificationSettings,
+  saveBookingRules,
+  savePaymentSettings,
+} from "@/lib/admin/settings";
+import { getBookingRules, type BookingRulesSettings } from "@/lib/booking/availability";
+import { getPaymentSettings, type PaymentSettings } from "@/lib/booking/paymentSettings";
+import { hashPassword, verifyPassword, validatePassword } from "@/lib/auth/password";
+import { getAnalytics } from "@/lib/admin/analytics";
 
 export async function fetchDispatchGridAction(dateKey: string) {
   const tenant = await resolveTenant();
@@ -226,6 +243,99 @@ export async function deleteHolidayAction(id: string) {
   await requireStaff();
   try {
     await deleteHoliday(tenant.id, id);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+// --------------------------------- Settings ---------------------------------------
+
+export async function fetchAllSettingsAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  const [general, rules, payments, loyalty, notifications] = await Promise.all([
+    getGeneralSettings(tenant.id),
+    getBookingRules(tenant.id),
+    getPaymentSettings(tenant.id),
+    getLoyaltySettings(tenant.id),
+    getNotificationSettings(tenant.id),
+  ]);
+  return { general, rules, payments, loyalty, notifications };
+}
+
+export async function saveGeneralSettingsAction(input: GeneralSettings) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveGeneralSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function saveBookingRulesAction(input: Partial<BookingRulesSettings>) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveBookingRules(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function savePaymentSettingsAction(input: Partial<PaymentSettings>) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await savePaymentSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function saveLoyaltySettingsAction(input: LoyaltySettings) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveLoyaltySettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function saveNotificationSettingsAction(input: NotificationSettings) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveNotificationSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function fetchAnalyticsAction(dateFrom: string, dateTo: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return getAnalytics(tenant.id, dateFrom, dateTo);
+}
+
+export async function changeOwnPasswordAction(currentPassword: string, newPassword: string) {
+  const tenant = await resolveTenant();
+  const staff = await requireStaff();
+  try {
+    validatePassword(newPassword);
+    const rows = await withTenant(tenant.id, (tx) => tx.$queryRaw<{ password_hash: string | null }[]>`SELECT password_hash FROM users WHERE id = ${staff.userId}::uuid LIMIT 1`);
+    if (!rows.length || !rows[0].password_hash || !(await verifyPassword(rows[0].password_hash, currentPassword))) {
+      throw new Error("Current password is incorrect.");
+    }
+    const passwordHash = await hashPassword(newPassword);
+    await withTenant(tenant.id, (tx) => tx.user.update({ where: { id: staff.userId }, data: { passwordHash } }));
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
