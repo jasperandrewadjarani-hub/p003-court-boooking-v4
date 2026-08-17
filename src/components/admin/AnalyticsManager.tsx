@@ -40,9 +40,33 @@ export function AnalyticsManager({ initialData, currency }: { initialData: Analy
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [activeOnly, setActiveOnly] = useState(false);
+
   async function apply() {
     setData(await fetchAnalyticsAction(from, to));
   }
+
+  // Build the stacked "Bookings Over Time" datasets: one per status seen in
+  // range (or just confirmed+reserved when the toggle is on). Chart.js is an
+  // accepted substitution for v3b's native-canvas renderer.
+  const STATUS_ORDER = ["reserved", "confirmed", "checked_in", "playing", "finished", "cancelled", "lapsed", "no_show"];
+  const statusesSeen = STATUS_ORDER.filter((s) => data.dailyBookingsByStatus.some((d) => (d.statuses[s] ?? 0) > 0));
+  const shownStatuses = activeOnly ? statusesSeen.filter((s) => s === "confirmed" || s === "reserved") : statusesSeen;
+  const stackedData = {
+    labels: data.dailyBookingsByStatus.map((d) => d.date),
+    datasets: shownStatuses.map((status, i) => ({
+      label: status,
+      data: data.dailyBookingsByStatus.map((d) => d.statuses[status] ?? 0),
+      backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+    })),
+  };
+  const stackedOptions = {
+    responsive: true,
+    scales: {
+      x: { stacked: true, title: { display: true, text: "Date" } },
+      y: { stacked: true, title: { display: true, text: "Bookings" } },
+    },
+  } as const;
 
   return (
     <div className="admin-view">
@@ -67,7 +91,7 @@ export function AnalyticsManager({ initialData, currency }: { initialData: Analy
           </a>
         </div>
         <p className="dim mono" style={{ fontSize: 11 }}>
-          Export includes: summary, detailed log, and payments — one workbook, three tabs.
+          Export includes: summary, bookings summary, detailed log, and payments — one workbook, four tabs.
         </p>
       </div>
 
@@ -83,6 +107,17 @@ export function AnalyticsManager({ initialData, currency }: { initialData: Analy
       <p className="dim mono" style={{ fontSize: 11, marginTop: -8 }}>
         Total Booking IDs counts each booking once across all statuses; Confirmed + Reserved is shown separately.
       </p>
+
+      <div className="panel">
+        <div className="panel__title" style={{ justifyContent: "space-between" }}>
+          <span>Bookings Over Time</span>
+          <label className="mono dim" style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+            <input type="checkbox" style={{ width: "auto" }} checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} />
+            Confirmed + Reserved only
+          </label>
+        </div>
+        <Bar data={stackedData} options={stackedOptions} />
+      </div>
 
       <div className="panel">
         <div className="panel__title">Revenue Over Time</div>
