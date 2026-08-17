@@ -18,6 +18,17 @@
   --text-dim: #7c93a3;
   --radius: 2px;
 
+  /* Dispatch-tile status/payment palette (branding overrides these per tenant
+     via brandingToCss; these are the base VOLT defaults). */
+  --status-confirmed: #3dffb0;
+  --status-reserved: #ffca3a;
+  --status-inactive: #77808c;
+  --payment-unpaid: #c62828;
+  --payment-awaiting: #ffca3a;
+  --payment-paid: #3dffb0;
+  --open-slot-text: #7c9a2e;
+  --selected-slot-text: #060a10;
+
   --font-display: "Rajdhani", sans-serif;
   --font-body: "IBM Plex Sans", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
@@ -45,4 +56,12 @@
   --success: #1e9a63;
   --text-primary: #0e1a12;
   --text-dim: #5b6b60;
+  --status-confirmed: #1e9a63;
+  --status-reserved: #b7791f;
+  --status-inactive: #77808c;
+  --payment-unpaid: #c62828;
+  --payment-awaiting: #b7791f;
+  --payment-paid: #1e9a63;
+  --open-slot-text: #5c8a00;
+  --selected-slot-text: #0e1a12;
 }

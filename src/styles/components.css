@@ -321,12 +321,14 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
   width: 220px; flex: 0 0 220px; background: var(--bg-panel); border-right: 1px solid var(--line-grid);
   padding: 20px 0; position: sticky; top: 0; height: 100vh;
 }
+.admin-brand-logo { display: block; max-width: 120px; max-height: 56px; object-fit: contain; margin: 4px 20px 10px; }
 .admin-sidebar .brand { font-size: 22px; letter-spacing: 2px; padding: 0 20px 20px; text-align: left; }
 .admin-nav-tabs { display: block; }
 .admin-nav-logout { margin-top: 30px; color: var(--accent-magenta); }
 .admin-nav-account { cursor: default; font-size: 10px; overflow-wrap: anywhere; }
 .admin-nav-credit { cursor: default; font-size: 9px; margin-top: 40px; }
 .admin-nav-item {
+  display: block; text-decoration: none;
   padding: 12px 20px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1px;
   font-size: 13px; color: var(--text-dim); cursor: pointer; border-left: 3px solid transparent;
 }
@@ -408,7 +410,7 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
 }
 .dispatch-time-head, .dispatch-court-head, .dispatch-time-cell { background: var(--bg-panel); font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
 .dispatch-time-head, .dispatch-court-head { position: sticky; top: 0; z-index: 7; padding: 12px 10px; text-transform: uppercase; letter-spacing: 1px; }
-.dispatch-time-head { left: 0; z-index: 9; }
+.dispatch-time-head { left: 0; z-index: 9; display: flex; flex-direction: column; justify-content: center; }
 .dispatch-court-head { font-family: var(--font-display); color: var(--accent-cyan); font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dispatch-court-head span { display: block; margin-top: 3px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dispatch-time-cell { position: sticky; left: 0; z-index: 6; display: flex; align-items: center; justify-content: center; min-height: 124px; padding: 8px; font-size: 12px; color: var(--accent-cyan); box-shadow: 1px 0 0 var(--line-grid); }
@@ -421,30 +423,51 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
 }
 .dispatch-tile:hover { transform: translateY(-1px); filter: brightness(1.08); }
 .dispatch-tile:disabled { cursor: not-allowed; transform: none; filter: none; }
-.dispatch-tile.paid { background: #123A2D; border-left-color: var(--success); box-shadow: inset 0 0 0 1px rgba(61, 255, 176, .28); }
-.dispatch-tile.unpaid { background: #47340B; border-left-color: #FFCA3A; box-shadow: inset 0 0 0 1px rgba(255, 202, 58, .34); }
-.dispatch-tile.vacant { background: #111B27; border-left-color: #314252; color: #B9C8D8; }
+/* Occupied-tile backgrounds keyed off booking status (v3b booking-status-*).
+   .paid/.unpaid retained as compatibility aliases for the slot.state class. */
+.dispatch-tile.booking-status-confirmed, .dispatch-tile.booking-status-checked-in,
+.dispatch-tile.booking-status-playing, .dispatch-tile.booking-status-finished, .dispatch-tile.paid {
+  background: color-mix(in srgb, var(--status-confirmed) 24%, var(--bg-panel)); border-left-color: var(--status-confirmed);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-confirmed) 30%, transparent);
+}
+.dispatch-tile.booking-status-reserved, .dispatch-tile.unpaid {
+  background: color-mix(in srgb, var(--status-reserved) 24%, var(--bg-panel)); border-left-color: var(--status-reserved);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-reserved) 30%, transparent);
+}
+.dispatch-tile.booking-status-cancelled, .dispatch-tile.booking-status-lapsed, .dispatch-tile.booking-status-no-show {
+  background: color-mix(in srgb, var(--status-inactive) 24%, var(--bg-panel)); border-left-color: var(--status-inactive);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-inactive) 32%, transparent);
+}
+.dispatch-tile.vacant { background: var(--bg-raised); border-left-color: var(--line-grid); color: var(--text-dim); }
 .dispatch-tile.vacant:hover { background: rgba(46, 230, 255, 0.08); border-left-color: var(--accent-cyan); color: var(--text-primary); }
 .dispatch-tile.vacant.selected { background: rgba(198, 255, 61, 0.18); border-left-color: var(--accent-optic); color: var(--text-primary); box-shadow: inset 0 0 0 1px rgba(198, 255, 61, 0.35); animation: adminSlotPulse 1s ease-in-out infinite; }
 @keyframes adminSlotPulse {
   0%, 100% { box-shadow: inset 0 0 0 1px rgba(198, 255, 61, .35), 0 0 0 rgba(198, 255, 61, 0); }
   50% { box-shadow: inset 0 0 0 2px rgba(198, 255, 61, .95), 0 0 18px rgba(198, 255, 61, .32); }
 }
-.dispatch-tile.vacant.selected .tile-status { color: var(--accent-optic); background: rgba(198, 255, 61, 0.13); }
-.dispatch-tile.single-slot-booking { padding: 8px 10px; gap: 3px; }
-.dispatch-tile.single-slot-booking .tile-court-list small, .dispatch-tile.single-slot-booking .tile-secondary { display: none; }
-.dispatch-tile.single-slot-booking .tile-primary { font-size: 16px; line-height: 18px; }
-.dispatch-tile.single-slot-booking .tile-court-list span { gap: 4px; }
-.dispatch-tile.single-slot-booking .tile-status { margin-top: 0; padding: 3px 7px; min-height: 20px; font-size: 8px; line-height: 10px; white-space: nowrap; }
-.dispatch-tile.blocked { background: #29313B; border-left-color: #77808C; color: var(--text-dim); box-shadow: inset 0 0 0 1px rgba(119, 128, 140, .35); }
+.dispatch-tile.blocked { background: color-mix(in srgb, var(--status-inactive) 24%, var(--bg-panel)); border-left-color: var(--status-inactive); color: var(--text-dim); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-inactive) 35%, transparent); }
+.dispatch-tile.blocked.selected { border-left-color: var(--accent-optic); box-shadow: inset 0 0 0 2px var(--accent-optic); }
 .dispatch-tile.is-filtered-out { opacity: .22; filter: grayscale(.6); }
-.tile-primary { font-family: var(--font-display); font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; max-width: 100%; line-height: 20px; }
-.tile-secondary { font-family: var(--font-mono); font-size: 12px; color: #91A5B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 17px; }
-.tile-financial { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 16px; }
-.tile-status { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: auto; min-height: 24px; padding: 4px 10px; border-radius: 999px; font-family: var(--font-mono); font-size: 10px; line-height: 14px; text-transform: uppercase; letter-spacing: .8px; background: rgba(255, 255, 255, 0.07); }
-.dispatch-tile.paid .tile-status { color: var(--success); background: rgba(61, 255, 176, 0.13); }
-.dispatch-tile.unpaid .tile-status { color: #FFCA3A; background: rgba(255, 202, 58, 0.13); }
-.dispatch-tile.vacant .tile-status { color: var(--accent-cyan); background: rgba(46, 230, 255, 0.1); }
+
+/* --- v3b tile content --- */
+.tile-primary { font-family: var(--font-display); font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; max-width: 100%; line-height: 18px; }
+.tile-secondary { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 15px; }
+.tile-booking-summary { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 13px; }
+.tile-financial-row { display: flex; align-items: center; gap: 4px; min-width: 0; margin-top: auto; }
+.tile-financial { min-width: 0; flex: 1; font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 13px; }
+.tile-payment-medal { flex: 0 1 auto; max-width: 60%; padding: 2px 6px; border-radius: 999px; font-family: var(--font-mono); font-size: 8px; line-height: 11px; text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-payment-medal.payment-unpaid { color: #fff; background: var(--payment-unpaid); }
+.tile-payment-medal.payment-awaiting-verification, .tile-payment-medal.payment-partial { color: #171000; background: var(--payment-awaiting); }
+.tile-payment-medal.payment-paid { color: #062317; background: var(--payment-paid); }
+.tile-open-line { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.tile-open-line strong { font-family: var(--font-display); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-open-line em { font-family: var(--font-mono); font-style: normal; font-size: 9px; color: var(--accent-cyan); white-space: nowrap; }
+.tile-open-date, .tile-open-time { font-family: var(--font-mono); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 12px; }
+.dispatch-tile.vacant .tile-open-line strong, .dispatch-tile.vacant .tile-open-line em, .dispatch-tile.vacant .tile-open-date, .dispatch-tile.vacant .tile-open-time { color: var(--open-slot-text); }
+.dispatch-tile.vacant.selected .tile-open-line strong, .dispatch-tile.vacant.selected .tile-open-line em, .dispatch-tile.vacant.selected .tile-open-date, .dispatch-tile.vacant.selected .tile-open-time { color: var(--selected-slot-text); }
+.dispatch-tile.blocked .tile-open-line strong, .dispatch-tile.blocked .tile-open-line em, .dispatch-tile.blocked .tile-open-date, .dispatch-tile.blocked .tile-open-time { color: var(--text-dim); }
+.dispatch-tile.blocked.selected .tile-open-line strong, .dispatch-tile.blocked.selected .tile-open-line em, .dispatch-tile.blocked.selected .tile-open-date, .dispatch-tile.blocked.selected .tile-open-time { color: var(--selected-slot-text); }
+.tile-status { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: auto; min-height: 22px; padding: 4px 10px; border-radius: 999px; font-family: var(--font-mono); font-size: 10px; line-height: 14px; text-transform: uppercase; letter-spacing: .8px; background: rgba(255, 255, 255, 0.07); }
 .dispatch-popover {
   position: absolute; left: 12px; top: calc(100% + 8px); z-index: 20; min-width: 230px; display: none; pointer-events: none;
   padding: 12px; border: 1px solid var(--accent-cyan); background: #101925; opacity: 1; filter: none;

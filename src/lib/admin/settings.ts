@@ -242,6 +242,14 @@ export function brandingToCss(b: BrandingSettings): string {
     `--text-dim:${b.darkMutedFont}`,
     `--accent-optic-dim:${b.darkOpenSlotFont}`,
     `--success:${b.confirmed}`,
+    `--status-confirmed:${b.confirmed}`,
+    `--status-reserved:${b.reserved}`,
+    `--status-inactive:${b.inactive}`,
+    `--payment-unpaid:${b.unpaid}`,
+    `--payment-awaiting:${b.awaiting}`,
+    `--payment-paid:${b.paid}`,
+    `--open-slot-text:${b.darkOpenSlotFont}`,
+    `--selected-slot-text:${b.darkSelectedSlotFont}`,
   ].join(";");
   const light = [
     `--accent-optic:${b.lightPrimary}`,
@@ -255,6 +263,14 @@ export function brandingToCss(b: BrandingSettings): string {
     `--text-dim:${b.lightMutedFont}`,
     `--accent-optic-dim:${b.lightOpenSlotFont}`,
     `--success:${b.confirmed}`,
+    `--status-confirmed:${b.confirmed}`,
+    `--status-reserved:${b.reserved}`,
+    `--status-inactive:${b.inactive}`,
+    `--payment-unpaid:${b.unpaid}`,
+    `--payment-awaiting:${b.awaiting}`,
+    `--payment-paid:${b.paid}`,
+    `--open-slot-text:${b.lightOpenSlotFont}`,
+    `--selected-slot-text:${b.lightSelectedSlotFont}`,
   ].join(";");
   return `:root{${dark}}:root[data-theme="light"]{${light}}`;
 }

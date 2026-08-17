@@ -13,6 +13,17 @@ function formatTime(hhmm: string): string {
   return `${hour12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
 }
 
+// v3b tile clock ("12:00 AM") + date label ("17-Aug") formats.
+function formatClock(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+}
+function formatDateLabel(key: string): string {
+  const d = new Date(key + "T00:00:00");
+  return `${d.getDate()}-${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()]}`;
+}
+
 function toMin(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
@@ -166,7 +177,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
           className="dispatch-grid"
           style={{ ["--dispatch-courts" as string]: grid.courts.length || 1, ["--dispatch-slots" as string]: visibleRows.length || 1 }}
         >
-          <div className="dispatch-time-head" />
+          <div className="dispatch-time-head"><span>Time</span></div>
           {grid.courts.map((c) => (
             <div className="dispatch-court-head" key={c.courtId}>
               {c.courtName}
@@ -188,7 +199,9 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                 const isSelected = selected.some((s) => s.key === key);
                 const awaiting = slot.booking?.paymentStatus === "awaiting_verification";
                 const isFilteredOut = filter !== "all" && slot.state !== filter;
-                const classes = ["dispatch-tile", slot.state, isSelected ? "selected" : "", isFilteredOut ? "is-filtered-out" : ""].filter(Boolean).join(" ");
+                const statusClass = slot.booking ? `booking-status-${String(slot.booking.status || "reserved").toLowerCase().replace(/[^a-z0-9]+/g, "-")}` : "";
+                const paymentKebab = String(slot.booking?.paymentStatus || "unpaid").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+                const classes = ["dispatch-tile", slot.state, statusClass, isSelected ? "selected" : "", isFilteredOut ? "is-filtered-out" : ""].filter(Boolean).join(" ");
                 const selectable = slot.state === "vacant" || slot.state === "blocked";
                 return (
                   <button
@@ -208,18 +221,40 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                     }
                   >
                     {slot.state === "vacant" ? (
-                      <span className="tile-status">{isSelected ? "Selected" : "Open"}</span>
+                      <>
+                        <span className="tile-open-line">
+                          <strong>{isSelected ? "Selected Slot" : "Open Slot"}</strong>
+                          <em>{isSelected ? "Selected" : "Book →"}</em>
+                        </span>
+                        <span className="tile-open-date">{formatDateLabel(dateKey)}</span>
+                        <span className="tile-open-time">{formatClock(slot.start)} - {formatClock(slot.end)}</span>
+                      </>
                     ) : slot.state === "blocked" ? (
-                      <span className="tile-status">{isSelected ? "Selected" : "Blocked"}</span>
+                      <>
+                        <span className="tile-open-line">
+                          <strong>{isSelected ? "Selected Block" : "Blocked"}</strong>
+                          <em>{slot.block?.id ? "Unblock →" : ""}</em>
+                        </span>
+                        <span className="tile-open-date">{formatDateLabel(dateKey)}</span>
+                        <span className="tile-open-time">{formatClock(slot.start)} - {formatClock(slot.end)}</span>
+                      </>
                     ) : slot.state === "maintenance" ? (
-                      <span className="tile-status">Maint</span>
+                      <>
+                        <span className="tile-open-line"><strong>Maintenance</strong></span>
+                        <span className="tile-open-time">{formatClock(slot.start)} - {formatClock(slot.end)}</span>
+                      </>
                     ) : (
                       <>
                         <div className="tile-primary">{slot.booking?.customerName}</div>
-                        <div className="tile-secondary">{slot.booking?.reference}</div>
-                        <span className="tile-status" style={awaiting ? { color: "#FFCA3A" } : undefined}>
-                          {awaiting ? "awaiting verification" : slot.booking?.paymentStatus}
-                        </span>
+                        <div className="tile-booking-summary">{formatClock(slot.start)} - {formatClock(slot.end)}</div>
+                        <div className="tile-financial-row">
+                          <span className="tile-financial">
+                            {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {slot.booking?.status}
+                          </span>
+                          <span className={`tile-payment-medal payment-${paymentKebab}`}>
+                            {awaiting ? "Awaiting" : slot.booking?.paymentStatus}
+                          </span>
+                        </div>
                         <div className="dispatch-popover">
                           <strong>{slot.booking?.customerName}</strong>
                           <span>{slot.booking?.reference}</span>
