@@ -290,7 +290,7 @@ export function BookingPage({
       <header className="hud">
         {tenant.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={tenant.logoUrl} alt={tenant.name} style={{ height: 72, margin: "0 auto 8px", display: "block" }} />
+          <img src={tenant.logoUrl} alt={tenant.name} className="hud-logo" />
         ) : null}
         <h1 className="brand">
           <span>{tenant.name}</span>
