@@ -426,14 +426,15 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
 }
 .dispatch-tile:hover { transform: translateY(-1px); filter: brightness(1.08); }
 .dispatch-tile:disabled { cursor: not-allowed; transform: none; filter: none; }
-/* Occupied-tile backgrounds keyed off booking status (v3b booking-status-*).
-   .paid/.unpaid retained as compatibility aliases for the slot.state class. */
+/* Occupied-tile background is keyed off BOOKING STATUS (v3b), not payment —
+   confirmed is green even when unpaid; the red/amber payment state shows only
+   in the medal. (Deliberately NOT keyed off the .paid/.unpaid slot.state.) */
 .dispatch-tile.booking-status-confirmed, .dispatch-tile.booking-status-checked-in,
-.dispatch-tile.booking-status-playing, .dispatch-tile.booking-status-finished, .dispatch-tile.paid {
+.dispatch-tile.booking-status-playing, .dispatch-tile.booking-status-finished {
   background: color-mix(in srgb, var(--status-confirmed) 24%, var(--bg-panel)); border-left-color: var(--status-confirmed);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-confirmed) 30%, transparent);
 }
-.dispatch-tile.booking-status-reserved, .dispatch-tile.unpaid {
+.dispatch-tile.booking-status-reserved {
   background: color-mix(in srgb, var(--status-reserved) 24%, var(--bg-panel)); border-left-color: var(--status-reserved);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-reserved) 30%, transparent);
 }

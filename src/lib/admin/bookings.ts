@@ -1,6 +1,7 @@
 import { withTenant } from "@/lib/tenant/withTenant";
 import { getBookingRules } from "@/lib/booking/availability";
 import { sweepLapsedBookings } from "@/lib/booking/expiry";
+import { compileSlots } from "@/lib/format";
 
 export interface BookingFilters {
   dateFrom?: string;
@@ -87,7 +88,7 @@ function mapAdminGroup(g: any): AdminBookingGroup {
     totalMinor: g.totalMinor,
     notes: g.notes,
     players: g.bookings[0]?.players ?? 1,
-    items: g.bookings.map((b: any) => ({ courtName: b.court.name, start: formatUtcTime(b.startsAt), end: formatUtcTime(b.endsAt), priceMinor: b.priceMinor })),
+    items: compileSlots(g.bookings.map((b: any) => ({ courtName: b.court.name, start: formatUtcTime(b.startsAt), end: formatUtcTime(b.endsAt), priceMinor: b.priceMinor }))),
   };
 }
 

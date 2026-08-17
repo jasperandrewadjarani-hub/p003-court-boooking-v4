@@ -4,6 +4,7 @@ import { Fragment, useState, useTransition } from "react";
 import { listBookingsAction } from "@/app/admin/actions";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
+import { labelize } from "@/lib/format";
 
 const STATUS_OPTIONS = ["", "reserved", "confirmed", "checked_in", "playing", "finished", "cancelled", "lapsed", "no_show"];
 
@@ -44,7 +45,7 @@ export function BookingsTable({ initialBookings, currency }: { initialBookings: 
             <select className="select-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {s === "" ? "All" : s}
+                  {s === "" ? "All" : labelize(s)}
                 </option>
               ))}
             </select>
@@ -81,8 +82,8 @@ export function BookingsTable({ initialBookings, currency }: { initialBookings: 
                     {b.reference ?? "Pending"} · {b.dateLabel}
                   </td>
                   <td>{b.customerName}</td>
-                  <td>{b.status}</td>
-                  <td>{b.paymentStatus}</td>
+                  <td>{labelize(b.status)}</td>
+                  <td>{labelize(b.paymentStatus)}</td>
                   <td>
                     {currency} {(b.amountPaidMinor / 100).toFixed(2)}
                   </td>

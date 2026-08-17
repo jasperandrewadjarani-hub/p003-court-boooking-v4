@@ -2,6 +2,7 @@ import { withTenant } from "@/lib/tenant/withTenant";
 import { getCurrentCustomer } from "@/lib/auth/customerAuth";
 import { getBookingRules } from "@/lib/booking/availability";
 import { sweepLapsedBookings } from "@/lib/booking/expiry";
+import { compileSlots } from "@/lib/format";
 
 export interface MyBookingItem {
   courtName: string;
@@ -44,12 +45,15 @@ export async function getMyBookings(tenantId: string): Promise<MyBookingGroup[] 
       status: g.status,
       paymentStatus: g.paymentStatus,
       totalMinor: g.totalMinor,
-      items: g.bookings.map((b) => ({
-        courtName: b.court.name,
-        start: formatUtcTime(b.startsAt),
-        end: formatUtcTime(b.endsAt),
-        status: b.status,
-      })),
+      items: compileSlots(
+        g.bookings.map((b) => ({
+          courtName: b.court.name,
+          start: formatUtcTime(b.startsAt),
+          end: formatUtcTime(b.endsAt),
+          status: b.status,
+          priceMinor: b.priceMinor,
+        }))
+      ),
     }));
   });
 }

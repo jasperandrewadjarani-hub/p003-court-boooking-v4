@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusAction, cancelBookingGroupAction } from "@/app/admin/actions";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
+import { labelize } from "@/lib/format";
 
 const PAYMENT_METHODS = ["cash", "gcash", "maya", "credit_card", "bank_transfer"] as const;
 const STATUSES = ["reserved", "confirmed", "checked_in", "playing", "finished", "cancelled", "lapsed", "no_show"] as const;
@@ -157,7 +158,7 @@ export function BookingOperationsModal({ booking, currency, onClose, onChanged }
             <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as any)}>
               {PAYMENT_METHODS.map((m) => (
                 <option key={m} value={m}>
-                  {m}
+                  {labelize(m)}
                 </option>
               ))}
             </select>
@@ -172,7 +173,7 @@ export function BookingOperationsModal({ booking, currency, onClose, onChanged }
         <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {labelize(s)}
             </option>
           ))}
         </select>

@@ -8,6 +8,7 @@ import type { DispatchGridData, DispatchCourt, DispatchTile } from "@/lib/admin/
 import type { MembershipOption } from "@/lib/booking/memberships";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
+import { labelize } from "@/lib/format";
 
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
@@ -315,10 +316,10 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                         </div>
                         <div className="tile-financial-row">
                           <span className="tile-financial">
-                            {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {slot.booking?.status}
+                            {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {labelize(slot.booking?.status)}
                           </span>
                           <span className={`tile-payment-medal payment-${paymentKebab}`}>
-                            {awaiting ? "Awaiting" : slot.booking?.paymentStatus}
+                            {awaiting ? "Awaiting" : labelize(slot.booking?.paymentStatus)}
                           </span>
                         </div>
                         <div className="dispatch-popover">
@@ -326,7 +327,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                           <span>{slot.booking?.reference}</span>
                           <span>{formatClock(slot.start)} - {formatClock(blockEnd)}</span>
                           <span>
-                            {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {slot.booking?.status}
+                            {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {labelize(slot.booking?.status)}
                           </span>
                           <span className="dim">Click to manage →</span>
                         </div>
@@ -533,7 +534,7 @@ function FrontdeskBookingModal({
             <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as (typeof PAYMENT_METHODS)[number] })}>
               {PAYMENT_METHODS.map((m) => (
                 <option key={m} value={m}>
-                  {m}
+                  {labelize(m)}
                 </option>
               ))}
             </select>
