@@ -44,12 +44,23 @@ export function CourtGrid({
         ))}
         {grid.courts[0]?.slots.map((_, i) => (
           <Fragment key={i}>
-            <div className="time-label">{formatTime(grid.courts[0].slots[i].start)}</div>
+            <div className="time-label">
+              {formatTime(grid.courts[0].slots[i].start)}-{formatTime(grid.courts[0].slots[i].end)}
+            </div>
             {grid.courts.map((court) => {
               const slot = court.slots[i];
               const isSelected = selectedKeys.has(slotKey(court.id, slot.start));
               const clickable = slot.status === "available";
               const classes = ["slot", slot.status, isSelected ? "selected" : ""].filter(Boolean).join(" ");
+              const label = isSelected
+                ? "Selected"
+                : slot.status === "available"
+                  ? "Open"
+                  : slot.status === "booked"
+                    ? "Booked"
+                    : slot.status === "blocked"
+                      ? "Blocked"
+                      : "Maint.";
               return (
                 <div
                   key={court.id}
@@ -57,9 +68,7 @@ export function CourtGrid({
                   onClick={() => clickable && onToggleSlot(court.id, court.name, slot.start, slot.end)}
                   role={clickable ? "button" : undefined}
                 >
-                  <span className="slot-label">
-                    {isSelected ? "Selected" : slot.status === "available" ? "Open" : slot.status === "booked" ? "Booked" : "Maint."}
-                  </span>
+                  <span className="slot-label">{label}</span>
                 </div>
               );
             })}

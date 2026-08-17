@@ -31,11 +31,14 @@ export default async function Home() {
           currency: tenant.currency,
           primaryColor: tenant.primaryColor ?? "#C6FF3D",
           accentColor: tenant.accentColor ?? "#2EE6FF",
+          logoUrl: tenant.logoUrl,
         }}
         initialGrid={grid}
         memberships={memberships}
         paymentSettings={paymentSettings}
         reservationHoldMinutes={rules.reservationHoldMinutes}
+        maxCourtHoursPerBooking={rules.maxCourtHoursPerBooking}
+        maxAdvanceBookingDays={rules.maxAdvanceBookingDays}
       />
     );
   } catch (error) {

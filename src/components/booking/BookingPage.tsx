@@ -19,6 +19,7 @@ interface TenantInfo {
   currency: string;
   primaryColor: string;
   accentColor: string;
+  logoUrl?: string | null;
 }
 
 function todayKey(offsetDays = 0): string {
@@ -33,10 +34,11 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 // Deliberately not toLocaleDateString() — see notes.md 2026-08-12 (hydration
 // mismatch: server/client ICU data disagreed even with the same `undefined`
 // locale argument). A fixed lookup table is deterministic by construction.
+// v3b date-chip format: "17-Aug" over "MON".
 function formatDateChip(dateKey: string): { weekday: string; day: string } {
   const [y, m, d] = dateKey.split("-").map(Number);
   const date = new Date(y, m - 1, d);
-  return { weekday: WEEKDAYS[date.getDay()], day: `${d} ${MONTHS[m - 1]}` };
+  return { weekday: WEEKDAYS[date.getDay()], day: `${d}-${MONTHS[m - 1]}` };
 }
 
 function formatDateLabel(dateKey: string): string {
@@ -45,10 +47,48 @@ function formatDateLabel(dateKey: string): string {
   return `${WEEKDAYS[date.getDay()]}, ${d} ${MONTHS[m - 1]} ${y}`;
 }
 
+// v3b short form: "17-Aug-26" (grid label / calendar display).
+function formatDateShort(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return `${d}-${MONTHS[m - 1]}-${String(y).slice(2)}`;
+}
+
+// v3b confirm-modal date header: "17-Aug-26 (Mon)".
+function formatDateHeader(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return `${formatDateShort(dateKey)} (${WEEKDAYS[date.getDay()]})`;
+}
+
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   const hour12 = h % 12 || 12;
   return `${hour12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
+}
+
+// Merge back-to-back slots on the same court into one line for the confirm
+// summary (v3b: "Court 1 8:00 am – 10:00 am" for two adjacent hourly slots).
+function mergeCartByCourt(cart: CartItem[]): { courtId: string; courtName: string; start: string; end: string }[] {
+  const byCourt = new Map<string, CartItem[]>();
+  for (const item of cart) {
+    if (!byCourt.has(item.courtId)) byCourt.set(item.courtId, []);
+    byCourt.get(item.courtId)!.push(item);
+  }
+  const merged: { courtId: string; courtName: string; start: string; end: string }[] = [];
+  for (const [courtId, items] of byCourt) {
+    const sorted = [...items].sort((a, b) => a.start.localeCompare(b.start));
+    let run = { start: sorted[0].start, end: sorted[0].end };
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].start === run.end) {
+        run.end = sorted[i].end; // contiguous — extend
+      } else {
+        merged.push({ courtId, courtName: sorted[0].courtName, start: run.start, end: run.end });
+        run = { start: sorted[i].start, end: sorted[i].end };
+      }
+    }
+    merged.push({ courtId, courtName: sorted[0].courtName, start: run.start, end: run.end });
+  }
+  return merged;
 }
 
 /**
@@ -62,12 +102,16 @@ export function BookingPage({
   memberships,
   paymentSettings,
   reservationHoldMinutes,
+  maxCourtHoursPerBooking,
+  maxAdvanceBookingDays,
 }: {
   tenant: TenantInfo;
   initialGrid: AvailabilityGrid;
   memberships: MembershipOption[];
   paymentSettings: PaymentSettings;
   reservationHoldMinutes: number;
+  maxCourtHoursPerBooking: number;
+  maxAdvanceBookingDays: number;
 }) {
   const [dateKey, setDateKey] = useState(initialGrid.date);
   const [grid, setGrid] = useState(initialGrid);
@@ -75,8 +119,9 @@ export function BookingPage({
   const [modalOpen, setModalOpen] = useState(false);
   const [tab, setTab] = useState<"book" | "mine">("book");
   const [membershipType, setMembershipType] = useState("");
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", players: 4 });
-  const [preview, setPreview] = useState({ totalMinor: 0, discountMinor: 0 });
+  const [discountCode, setDiscountCode] = useState("");
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
+  const [preview, setPreview] = useState<{ totalMinor: number; discountMinor: number; discountError?: string }>({ totalMinor: 0, discountMinor: 0 });
   const [status, setStatus] = useState<{ kind: "idle" | "error"; message?: string }>({ kind: "idle" });
   const [completedBooking, setCompletedBooking] = useState<{ bookingGroupId: string; reference: string; totalMinor: number } | null>(null);
   const [showReceiptReminder, setShowReceiptReminder] = useState(false);
@@ -96,17 +141,37 @@ export function BookingPage({
       return;
     }
     let cancelled = false;
-    previewCartTotalAction(
-      dateKey,
-      cart.map((c) => ({ courtId: c.courtId, startTime: c.start, endTime: c.end })),
-      membershipType || undefined
-    ).then((result) => {
-      if (!cancelled) setPreview(result);
-    });
+    // Small debounce so typing a discount code doesn't fire a request per key.
+    const handle = setTimeout(() => {
+      previewCartTotalAction(
+        dateKey,
+        cart.map((c) => ({ courtId: c.courtId, startTime: c.start, endTime: c.end })),
+        membershipType || undefined,
+        discountCode.trim() || undefined
+      ).then((result) => {
+        if (!cancelled) setPreview(result);
+      });
+    }, 250);
     return () => {
       cancelled = true;
+      clearTimeout(handle);
     };
-  }, [cart, dateKey, membershipType]);
+  }, [cart, dateKey, membershipType, discountCode]);
+
+  // Light/dark theme toggle (v3b) — persisted to localStorage, applied to the
+  // document root so tokens.css's [data-theme="light"] palette takes over.
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  useEffect(() => {
+    const saved = (localStorage.getItem("volt_theme") as "dark" | "light" | null) ?? "dark";
+    setTheme(saved);
+    document.documentElement.dataset.theme = saved;
+  }, []);
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("volt_theme", next);
+  }
 
   function loadDate(key: string) {
     setDateKey(key);
@@ -160,8 +225,9 @@ export function BookingPage({
       const res = await createBookingAction({
         dateKey,
         items: cart.map((c) => ({ courtId: c.courtId, startTime: c.start, endTime: c.end })),
-        players: form.players,
+        players: 1, // v3b removed Number of Players — backend stores 1
         membershipType: membershipType || undefined,
+        discountCode: discountCode.trim() || undefined,
       });
       setAccountModal(null);
       if (res.ok) {
@@ -186,7 +252,8 @@ export function BookingPage({
     }
   }
 
-  const dateButtons = Array.from({ length: 7 }, (_, i) => todayKey(i));
+  const dateButtons = Array.from({ length: 14 }, (_, i) => todayKey(i));
+  const maxPickDate = todayKey(maxAdvanceBookingDays);
 
   const occupancyText = useMemo(() => {
     if (!grid.courts.length) return "SYNCING COURT STATUS";
@@ -212,11 +279,19 @@ export function BookingPage({
         </a>
       </div>
 
+      <button className="theme-toggle" onClick={toggleTheme}>
+        {theme === "dark" ? "☾ Light Mode" : "☀ Dark Mode"}
+      </button>
+
       <div className="ticker">
         <div className="ticker__track">{occupancyText}</div>
       </div>
 
       <header className="hud">
+        {tenant.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={tenant.logoUrl} alt={tenant.name} style={{ height: 72, margin: "0 auto 8px", display: "block" }} />
+        ) : null}
         <h1 className="brand">
           <span>{tenant.name}</span>
         </h1>
@@ -248,6 +323,18 @@ export function BookingPage({
                   );
                 })}
               </div>
+              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ margin: 0, whiteSpace: "nowrap" }}>Or pick any date</label>
+                <input
+                  type="date"
+                  value={dateKey}
+                  min={todayKey(0)}
+                  max={maxPickDate}
+                  style={{ maxWidth: 200 }}
+                  onChange={(e) => e.target.value && loadDate(e.target.value)}
+                />
+                <span className="mono dim" style={{ fontSize: 11 }}>{formatDateShort(dateKey)}</span>
+              </div>
             </div>
 
             <div className="panel grid-panel-wide" style={{ marginBottom: 0 }}>
@@ -264,7 +351,7 @@ export function BookingPage({
 
             <CartBar
               items={cart}
-              totalHoursLabel={`${cart.length} slot${cart.length === 1 ? "" : "s"} selected · ${totalHours}h total`}
+              totalHoursLabel={`${totalHours.toFixed(1)} / ${maxCourtHoursPerBooking} court-hours`}
               totalText={cart.length ? `${tenant.currency} ${(preview.totalMinor / 100).toFixed(2)}` : "—"}
               onRemove={removeCartItem}
               onContinue={() => setModalOpen(true)}
@@ -300,24 +387,22 @@ export function BookingPage({
 
             <div className="grouped-booking-block">
               <div className="grouped-booking-head">
-                <strong>{cart.length} item{cart.length === 1 ? "" : "s"}</strong>
-                <span>{formatDateLabel(dateKey)}</span>
+                <strong className="grouped-booking-date">{formatDateHeader(dateKey)}</strong>
+                <span>Booking Summary</span>
               </div>
-              {cart.map((item) => (
-                <div className="grouped-booking-item" key={item.key}>
+              {mergeCartByCourt(cart).map((item) => (
+                <div className="grouped-booking-item" key={item.courtId + item.start}>
                   <div className="booking-court-identity">
                     <strong>{item.courtName}</strong>
                   </div>
                   <span className="grouped-booking-time">
-                    {formatTime(item.start)}–{formatTime(item.end)}
+                    {formatTime(item.start)} – {formatTime(item.end)}
                   </span>
                 </div>
               ))}
               <div className="grouped-booking-total">
-                <span>Estimated Total</span>
-                <strong>
-                  {tenant.currency} {(preview.totalMinor / 100).toFixed(2)}
-                </strong>
+                <span>Total Court Hours</span>
+                <strong>{totalHours.toFixed(1)} court hrs</strong>
               </div>
             </div>
 
@@ -329,17 +414,31 @@ export function BookingPage({
             <input type="tel" placeholder="09XX XXX XXXX" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             <label>Email (your booking account)</label>
             <input type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <label>Number of Players</label>
-            <input type="number" min={1} value={form.players} onChange={(e) => setForm({ ...form, players: Number(e.target.value) })} />
             <label>Membership</label>
-            <select value={membershipType} onChange={(e) => setMembershipType(e.target.value)}>
-              <option value="">No Membership</option>
-              {memberships.map((m) => (
-                <option key={m.name} value={m.name}>
-                  {m.name} (−{m.discountPercent}%)
-                </option>
-              ))}
+            <select value={membershipType} onChange={(e) => setMembershipType(e.target.value)} disabled={memberships.length === 0}>
+              {memberships.length === 0 ? (
+                <option value="">No active memberships</option>
+              ) : (
+                <>
+                  <option value="">No Membership</option>
+                  {memberships.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name} (−{m.discountPercent}%)
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
+            <label>Discount Code (optional)</label>
+            <input value={discountCode} onChange={(e) => setDiscountCode(e.target.value)} placeholder="Enter code" />
+            {preview.discountError ? (
+              <div className="field-warning">{preview.discountError}</div>
+            ) : preview.discountMinor > 0 ? (
+              <div className="summary-line">
+                <span>Discount</span>
+                <strong>− {tenant.currency} {(preview.discountMinor / 100).toFixed(2)}</strong>
+              </div>
+            ) : null}
 
             <div className="total-line">
               <span>Estimated Total</span>

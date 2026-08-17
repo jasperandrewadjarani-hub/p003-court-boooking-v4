@@ -197,6 +197,8 @@ header.hud {
 .slot.booked .slot-label { color: var(--accent-magenta); }
 .slot.maintenance { background: repeating-linear-gradient(45deg, var(--bg-raised), var(--bg-raised) 6px, var(--bg-panel) 6px, var(--bg-panel) 12px); cursor: not-allowed; }
 .slot.maintenance .slot-label { color: var(--text-dim); }
+.slot.blocked { background: repeating-linear-gradient(45deg, rgba(120, 128, 140, 0.28), rgba(120, 128, 140, 0.28) 6px, var(--bg-panel) 6px, var(--bg-panel) 12px); cursor: not-allowed; }
+.slot.blocked .slot-label { color: #a6b2c0; font-weight: 600; }
 
 /* Selection: a rectangle pulse (not an oval overlay) — only ever applied
    to slots the current customer has personally added to their cart, and
