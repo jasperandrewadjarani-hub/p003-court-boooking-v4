@@ -37,6 +37,13 @@ import {
   getNotificationSettings,
   saveNotificationSettings,
   type NotificationSettings,
+  getPerformanceSettings,
+  savePerformanceSettings,
+  type PerformanceSettings,
+  getBrandingSettings,
+  saveBrandingSettings,
+  resetBrandingSettings,
+  type BrandingSettings,
   saveBookingRules,
   savePaymentSettings,
 } from "@/lib/admin/settings";
@@ -316,6 +323,45 @@ export async function saveGeneralSettingsAction(input: GeneralSettings) {
   await requireStaff();
   try {
     await saveGeneralSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function savePerformanceSettingsAction(input: PerformanceSettings) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await savePerformanceSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function fetchBrandingAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return getBrandingSettings(tenant.id);
+}
+
+export async function saveBrandingAction(input: BrandingSettings) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveBrandingSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function resetBrandingAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await resetBrandingSettings(tenant.id);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };

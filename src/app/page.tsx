@@ -3,6 +3,7 @@ import { resolveTenant, TenantNotFoundError } from "@/lib/tenant/resolve";
 import { getAvailabilityGrid, getBookingRules } from "@/lib/booking/availability";
 import { getActiveMemberships } from "@/lib/booking/memberships";
 import { getPaymentSettings } from "@/lib/booking/paymentSettings";
+import { getBrandingSettings, brandingToCss } from "@/lib/admin/settings";
 import { BookingPage } from "@/components/booking/BookingPage";
 
 function todayKey(): string {
@@ -16,14 +17,17 @@ export default async function Home() {
   try {
     const tenant = await resolveTenant();
     const dateKey = todayKey();
-    const [grid, memberships, paymentSettings, rules] = await Promise.all([
+    const [grid, memberships, paymentSettings, rules, branding] = await Promise.all([
       getAvailabilityGrid(tenant.id, dateKey),
       getActiveMemberships(tenant.id),
       getPaymentSettings(tenant.id),
       getBookingRules(tenant.id),
+      getBrandingSettings(tenant.id),
     ]);
 
     return (
+      <>
+        <style dangerouslySetInnerHTML={{ __html: brandingToCss(branding) }} />
       <BookingPage
         tenant={{
           name: tenant.name,
@@ -40,6 +44,7 @@ export default async function Home() {
         maxCourtHoursPerBooking={rules.maxCourtHoursPerBooking}
         maxAdvanceBookingDays={rules.maxAdvanceBookingDays}
       />
+      </>
     );
   } catch (error) {
     if (error instanceof TenantNotFoundError) {

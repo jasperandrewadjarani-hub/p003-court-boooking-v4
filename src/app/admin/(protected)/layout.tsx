@@ -1,13 +1,16 @@
 import { redirect } from "next/navigation";
 import { getCurrentStaff, logoutStaff } from "@/lib/auth/staffAuth";
 import { resolveTenant } from "@/lib/tenant/resolve";
+import { getBrandingSettings, brandingToCss } from "@/lib/admin/settings";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { AdminThemeToggle } from "@/components/admin/AdminThemeToggle";
 
 export default async function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
   const staff = await getCurrentStaff();
   if (!staff) redirect("/admin/login");
 
   const tenant = await resolveTenant();
+  const branding = await getBrandingSettings(tenant.id);
 
   async function doLogout() {
     "use server";
@@ -17,6 +20,8 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
 
   return (
     <div className="admin-shell">
+      <style dangerouslySetInnerHTML={{ __html: brandingToCss(branding) }} />
+      <AdminThemeToggle />
       <div className="admin-sidebar">
         <div className="brand" style={{ fontSize: 20 }}>
           {tenant.name.toUpperCase()}
