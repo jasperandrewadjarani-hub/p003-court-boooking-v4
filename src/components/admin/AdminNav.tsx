@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/courts", label: "Courts" },
   { href: "/admin/pricing", label: "Price Matrix" },
-  { href: "/admin/memberships", label: "Memberships" },
+  { href: "/admin/memberships", label: "Memberships and Discounts" },
   { href: "/admin/holidays", label: "Holidays" },
   { href: "/admin/settings", label: "Settings" },
 ];

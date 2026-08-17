@@ -1,0 +1,142 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import { listDiscountsAction, saveDiscountAction } from "@/app/admin/actions";
+
+interface DiscountRow {
+  id: string;
+  code: string;
+  discountType: "percentage" | "fixed_php";
+  discountValue: number;
+  maxAvailments: number;
+  timesAvailed: number;
+  active: boolean;
+}
+
+const EMPTY = { code: "", discountType: "percentage" as "percentage" | "fixed_php", discountValue: "0", maxAvailments: "0", active: true };
+
+/** v3b "Discounts" sub-panel of the Memberships and Discounts screen. */
+export function DiscountsManager() {
+  const [rows, setRows] = useState<DiscountRow[]>([]);
+  const [form, setForm] = useState(EMPTY);
+  const [error, setError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  function refresh() {
+    startTransition(async () => setRows((await listDiscountsAction()) as DiscountRow[]));
+  }
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  function edit(d: DiscountRow) {
+    setForm({
+      code: d.code,
+      discountType: d.discountType,
+      discountValue: String(d.discountType === "fixed_php" ? d.discountValue / 100 : d.discountValue),
+      maxAvailments: String(d.maxAvailments),
+      active: d.active,
+    });
+  }
+
+  async function save() {
+    setError(null);
+    if (!form.code.trim()) {
+      setError("Discount code is required.");
+      return;
+    }
+    const rawValue = Number(form.discountValue);
+    const res = await saveDiscountAction({
+      code: form.code,
+      discountType: form.discountType,
+      // Fixed PHP is entered in pesos, stored as minor units; percentage stored as-is.
+      discountValue: form.discountType === "fixed_php" ? Math.round(rawValue * 100) : rawValue,
+      maxAvailments: Number(form.maxAvailments),
+      active: form.active,
+    });
+    if (res.ok) {
+      setForm(EMPTY);
+      refresh();
+    } else {
+      setError(res.error);
+    }
+  }
+
+  return (
+    <>
+      <div className="panel">
+        <div className="panel__title">Discounts</div>
+        <div className="inline-form">
+          <div>
+            <label>Code</label>
+            <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} />
+          </div>
+          <div>
+            <label>Type</label>
+            <select value={form.discountType} onChange={(e) => setForm({ ...form, discountType: e.target.value as "percentage" | "fixed_php" })}>
+              <option value="percentage">Percentage</option>
+              <option value="fixed_php">Fixed PHP</option>
+            </select>
+          </div>
+          <div>
+            <label>Value {form.discountType === "percentage" ? "(%)" : "(PHP)"}</label>
+            <input type="number" min={0} value={form.discountValue} onChange={(e) => setForm({ ...form, discountValue: e.target.value })} />
+          </div>
+          <div>
+            <label>Maximum Availments (0 = unlimited)</label>
+            <input type="number" min={0} value={form.maxAvailments} onChange={(e) => setForm({ ...form, maxAvailments: e.target.value })} />
+          </div>
+          <div>
+            <label>Status</label>
+            <select value={form.active ? "TRUE" : "FALSE"} onChange={(e) => setForm({ ...form, active: e.target.value === "TRUE" })}>
+              <option value="TRUE">Active</option>
+              <option value="FALSE">Inactive</option>
+            </select>
+          </div>
+        </div>
+        {error && <div className="field-warning">{error}</div>}
+        <button className="btn" style={{ marginTop: 14 }} onClick={save}>
+          Save Discount
+        </button>
+        <button className="btn secondary" style={{ marginTop: 14, marginLeft: 8 }} onClick={() => setForm(EMPTY)}>
+          New Discount
+        </button>
+      </div>
+      <div className="panel">
+        <div className="panel__title">All Discounts</div>
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Type</th>
+              <th>Value</th>
+              <th>Used</th>
+              <th>Maximum</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((d) => (
+              <tr key={d.id}>
+                <td>{d.code}</td>
+                <td>{d.discountType === "percentage" ? "Percentage" : "Fixed PHP"}</td>
+                <td>{d.discountType === "percentage" ? `${d.discountValue}%` : `PHP ${(d.discountValue / 100).toFixed(2)}`}</td>
+                <td>{d.timesAvailed}</td>
+                <td>{d.maxAvailments === 0 ? "Unlimited" : d.maxAvailments}</td>
+                <td>
+                  <span className={`badge ${d.active ? "on" : "off"}`}>{d.active ? "Active" : "Inactive"}</span>
+                </td>
+                <td className="action-cell">
+                  <button className="btn secondary" onClick={() => edit(d)}>
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}

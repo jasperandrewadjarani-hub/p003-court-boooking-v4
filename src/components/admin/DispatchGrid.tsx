@@ -1,10 +1,10 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
-import { fetchDispatchGridAction } from "@/app/admin/actions";
+import { fetchDispatchGridAction, blockSlotsAction, unblockSlotsAction } from "@/app/admin/actions";
 import { createFrontdeskBookingAction } from "@/lib/admin/frontdesk";
 import { previewCartTotalAction } from "@/app/actions";
-import type { DispatchGridData, DispatchTileState } from "@/lib/admin/dispatchGrid";
+import type { DispatchGridData } from "@/lib/admin/dispatchGrid";
 import type { MembershipOption } from "@/lib/booking/memberships";
 
 function formatTime(hhmm: string): string {
@@ -13,8 +13,15 @@ function formatTime(hhmm: string): string {
   return `${hour12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
 }
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+function toMin(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function todayKey(offset = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
 }
 
 interface SelectedSlot {
@@ -23,19 +30,25 @@ interface SelectedSlot {
   courtName: string;
   start: string;
   end: string;
+  kind: "vacant" | "blocked";
+  blockId?: string;
 }
 
 type Filter = "all" | "paid" | "unpaid" | "vacant";
 
-/** Matches v2's Dispatch Grid — the admin's own HUD-style live schedule.
- * Vacant tiles are clickable and multi-selectable to build a walk-in
- * booking; paid/unpaid/blocked tiles show booking detail on hover. */
+const PAYMENT_METHODS = ["cash", "gcash", "maya", "credit_card", "bank_transfer"] as const;
+
+/** v3b Dispatch Grid — admin live schedule. Vacant tiles are multi-selectable
+ * to build a walk-in booking OR to block; blocked tiles are selectable to
+ * unblock; occupied tiles show booking detail + a payment medal. */
 export function DispatchGrid({ initialGrid, currency, memberships }: { initialGrid: DispatchGridData; currency: string; memberships: MembershipOption[] }) {
   const [dateKey, setDateKey] = useState(initialGrid.date);
   const [grid, setGrid] = useState(initialGrid);
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<SelectedSlot[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [cropCustomerHours, setCropCustomerHours] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function loadDate(key: string) {
@@ -47,16 +60,64 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
     });
   }
 
-  function toggleSlot(courtId: string, courtName: string, start: string, end: string) {
-    const key = `${courtId}__${start}`;
-    setSelected((prev) => (prev.some((s) => s.key === key) ? prev.filter((s) => s.key !== key) : [...prev, { key, courtId, courtName, start, end }]));
+  function refresh() {
+    startTransition(async () => setGrid(await fetchDispatchGridAction(dateKey)));
   }
 
-  const dateButtons = useMemo(() => Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  }), []);
+  // Selecting a tile of a different kind than the current selection resets it —
+  // you can't mix vacant (book/block) and blocked (unblock) in one action.
+  function toggleSlot(s: Omit<SelectedSlot, "key">) {
+    const key = `${s.courtId}__${s.start}`;
+    setActionError(null);
+    setSelected((prev) => {
+      if (prev.some((p) => p.key === key)) return prev.filter((p) => p.key !== key);
+      if (prev.length && prev[0].kind !== s.kind) return [{ ...s, key }];
+      return [...prev, { ...s, key }];
+    });
+  }
+
+  const selectionKind = selected.length ? selected[0].kind : null;
+
+  function doBlock() {
+    setActionError(null);
+    startTransition(async () => {
+      const res = await blockSlotsAction(dateKey, selected.map((s) => ({ courtId: s.courtId, startTime: s.start, endTime: s.end })));
+      if (res.ok) {
+        setSelected([]);
+        refresh();
+      } else setActionError(res.error);
+    });
+  }
+
+  function doUnblock() {
+    setActionError(null);
+    startTransition(async () => {
+      const ids = [...new Set(selected.map((s) => s.blockId).filter(Boolean) as string[])];
+      const res = await unblockSlotsAction(ids);
+      if (res.ok) {
+        setSelected([]);
+        refresh();
+      } else setActionError(res.error);
+    });
+  }
+
+  // v3b shows up to 21 days in the scrollable strip.
+  const dateButtons = useMemo(() => Array.from({ length: 21 }, (_, i) => todayKey(i)), []);
+
+  const rowCount = grid.courts[0]?.slots.length ?? 0;
+  // Customer-hours crop: hide rows whose slot start is outside the customer
+  // window — purely client-side, no refetch (v3b behavior).
+  const visibleRows = useMemo(() => {
+    const idx = Array.from({ length: rowCount }, (_, i) => i);
+    if (!cropCustomerHours) return idx;
+    const { startMin, endMin } = grid.customerWindow;
+    return idx.filter((i) => {
+      const s = grid.courts[0]?.slots[i];
+      if (!s) return false;
+      const m = toMin(s.start);
+      return m >= startMin && m < endMin;
+    });
+  }, [rowCount, cropCustomerHours, grid]);
 
   return (
     <div className="panel dispatch-panel">
@@ -68,6 +129,10 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
           </p>
         </div>
         <div className="dispatch-controls">
+          <label className="mono dim" style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 11, whiteSpace: "nowrap" }}>
+            <input type="checkbox" style={{ width: "auto" }} checked={cropCustomerHours} onChange={(e) => setCropCustomerHours(e.target.checked)} />
+            Customer hours
+          </label>
           {(["all", "paid", "unpaid", "vacant"] as Filter[]).map((f) => (
             <button key={f} className={`btn secondary dispatch-filter ${filter === f ? "active" : ""}`} data-filter={f} onClick={() => setFilter(f)}>
               {f === "all" ? "All" : f === "vacant" ? "Vacant Only" : f[0].toUpperCase() + f.slice(1)}
@@ -78,6 +143,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
 
       <div className="dispatch-legend">
         <span><i className="dispatch-dot paid" />Paid / Confirmed</span>
+        <span><i className="dispatch-dot unpaid" style={{ background: "#FFCA3A" }} />Awaiting Verification</span>
         <span><i className="dispatch-dot unpaid" />Reserved / Unpaid</span>
         <span><i className="dispatch-dot vacant" />Vacant</span>
         <span><i className="dispatch-dot blocked" />Blocked</span>
@@ -89,7 +155,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
           return (
             <button key={key} className={`dispatch-date-chip ${key === dateKey ? "active" : ""}`} onClick={() => loadDate(key)}>
               <strong>{d.getDate()}</strong>
-              <span>{d.toLocaleDateString(undefined, { weekday: "short" })}</span>
+              <span>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]}</span>
             </button>
           );
         })}
@@ -98,7 +164,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
       <div className="dispatch-grid-wrap" aria-busy={isPending}>
         <div
           className="dispatch-grid"
-          style={{ ["--dispatch-courts" as string]: grid.courts.length || 1, ["--dispatch-slots" as string]: grid.courts[0]?.slots.length || 1 }}
+          style={{ ["--dispatch-courts" as string]: grid.courts.length || 1, ["--dispatch-slots" as string]: visibleRows.length || 1 }}
         >
           <div className="dispatch-time-head" />
           {grid.courts.map((c) => (
@@ -107,7 +173,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
               {c.description && <span>{c.description}</span>}
             </div>
           ))}
-          {grid.courts[0]?.slots.map((_, i) => (
+          {visibleRows.map((i) => (
             <Fragment key={i}>
               <div className="dispatch-time-cell">
                 <span className="dtc-range">
@@ -120,24 +186,40 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                 const slot = court.slots[i];
                 const key = `${court.courtId}__${slot.start}`;
                 const isSelected = selected.some((s) => s.key === key);
+                const awaiting = slot.booking?.paymentStatus === "awaiting_verification";
                 const isFilteredOut = filter !== "all" && slot.state !== filter;
                 const classes = ["dispatch-tile", slot.state, isSelected ? "selected" : "", isFilteredOut ? "is-filtered-out" : ""].filter(Boolean).join(" ");
+                const selectable = slot.state === "vacant" || slot.state === "blocked";
                 return (
                   <button
                     key={court.courtId}
                     className={classes}
-                    disabled={slot.state !== "vacant"}
-                    onClick={() => slot.state === "vacant" && toggleSlot(court.courtId, court.courtName, slot.start, slot.end)}
+                    disabled={!selectable}
+                    onClick={() =>
+                      selectable &&
+                      toggleSlot({
+                        courtId: court.courtId,
+                        courtName: court.courtName,
+                        start: slot.start,
+                        end: slot.end,
+                        kind: slot.state === "blocked" ? "blocked" : "vacant",
+                        blockId: slot.block?.id,
+                      })
+                    }
                   >
                     {slot.state === "vacant" ? (
                       <span className="tile-status">{isSelected ? "Selected" : "Open"}</span>
                     ) : slot.state === "blocked" ? (
-                      <span className="tile-status">Maintenance</span>
+                      <span className="tile-status">{isSelected ? "Selected" : "Blocked"}</span>
+                    ) : slot.state === "maintenance" ? (
+                      <span className="tile-status">Maint</span>
                     ) : (
                       <>
                         <div className="tile-primary">{slot.booking?.customerName}</div>
                         <div className="tile-secondary">{slot.booking?.reference}</div>
-                        <span className="tile-status">{slot.booking?.paymentStatus}</span>
+                        <span className="tile-status" style={awaiting ? { color: "#FFCA3A" } : undefined}>
+                          {awaiting ? "awaiting verification" : slot.booking?.paymentStatus}
+                        </span>
                         <div className="dispatch-popover">
                           <strong>{slot.booking?.customerName}</strong>
                           <span>{slot.booking?.reference}</span>
@@ -156,25 +238,38 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
         </div>
       </div>
 
+      {actionError && <div className="field-warning" style={{ marginTop: 8 }}>{actionError}</div>}
+
       {selected.length > 0 && (
         <div className="dispatch-selection-bar dispatch-selection-dock">
           <div>
             <div className="mono dim" style={{ fontSize: 10 }}>
-              Selected frontdesk slots
+              {selectionKind === "blocked" ? "Selected blocked slots" : "Selected frontdesk slots"}
             </div>
             <div className="dispatch-selected-slots">
               {selected.map((s) => (
                 <span className="dispatch-chip" key={s.key}>
                   {s.courtName} {formatTime(s.start)}
-                  <button onClick={() => toggleSlot(s.courtId, s.courtName, s.start, s.end)}>✕</button>
+                  <button onClick={() => toggleSlot(s)}>✕</button>
                 </span>
               ))}
             </div>
           </div>
           <div className="dispatch-selection-actions">
-            <button className="btn" onClick={() => setModalOpen(true)}>
-              Create Booking
-            </button>
+            {selectionKind === "blocked" ? (
+              <button className="btn" onClick={doUnblock} disabled={isPending}>
+                Unblock
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={() => setModalOpen(true)}>
+                  Create Booking
+                </button>
+                <button className="btn secondary" onClick={doBlock} disabled={isPending}>
+                  Block Time Slots
+                </button>
+              </>
+            )}
             <button className="btn secondary" onClick={() => setSelected([])}>
               Clear
             </button>
@@ -215,45 +310,45 @@ function FrontdeskBookingModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", email: "", players: 2, notes: "", membershipType: "" });
-  const [preview, setPreview] = useState({ totalMinor: 0 });
+  const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", email: "", notes: "", membershipType: "", discountCode: "", amountPaid: "0", paymentMethod: "cash" as (typeof PAYMENT_METHODS)[number] });
+  const [preview, setPreview] = useState<{ totalMinor: number; discountMinor: number; discountError?: string }>({ totalMinor: 0, discountMinor: 0 });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    previewCartTotalAction(dateKey, items.map((i) => ({ courtId: i.courtId, startTime: i.start, endTime: i.end })), form.membershipType || undefined).then(
-      setPreview
-    );
-  }, [items, dateKey, form.membershipType]);
+    const h = setTimeout(() => {
+      previewCartTotalAction(
+        dateKey,
+        items.map((i) => ({ courtId: i.courtId, startTime: i.start, endTime: i.end })),
+        form.membershipType || undefined,
+        form.discountCode.trim() || undefined
+      ).then(setPreview);
+    }, 250);
+    return () => clearTimeout(h);
+  }, [items, dateKey, form.membershipType, form.discountCode]);
 
   async function submit() {
     setError(null);
-    if (!form.firstName && !form.lastName) {
-      setError("Enter the customer name.");
-      return;
-    }
-    if (!form.phone) {
-      setError("Enter the customer phone number.");
-      return;
-    }
+    if (!form.firstName && !form.lastName) return setError("Enter the customer name.");
+    if (!form.phone) return setError("Enter the customer phone number.");
     setPending(true);
     try {
       const res = await createFrontdeskBookingAction({
         items: items.map((i) => ({ courtId: i.courtId, startTime: i.start, endTime: i.end })),
         dateKey,
-        players: form.players,
+        players: 1,
         firstName: form.firstName,
         lastName: form.lastName,
         phone: form.phone,
         email: form.email,
         notes: form.notes,
         membershipType: form.membershipType || undefined,
+        discountCode: form.discountCode.trim() || undefined,
+        amountPaidMinor: Math.round(Number(form.amountPaid) * 100) || 0,
+        paymentMethod: form.paymentMethod,
       });
-      if (res.ok) {
-        onCreated();
-      } else {
-        setError(res.error);
-      }
+      if (res.ok) onCreated();
+      else setError(res.error);
     } finally {
       setPending(false);
     }
@@ -282,6 +377,7 @@ function FrontdeskBookingModal({
             {currency} {(preview.totalMinor / 100).toFixed(2)}
           </span>
         </div>
+        {preview.discountError && <div className="field-warning">{preview.discountError}</div>}
         <div className="inline-form" style={{ marginTop: 14 }}>
           <div>
             <label>First Name</label>
@@ -300,16 +396,30 @@ function FrontdeskBookingModal({
             <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </div>
           <div>
-            <label>Players</label>
-            <input type="number" min={1} value={form.players} onChange={(e) => setForm({ ...form, players: Number(e.target.value) })} />
-          </div>
-          <div>
             <label>Membership</label>
             <select value={form.membershipType} onChange={(e) => setForm({ ...form, membershipType: e.target.value })}>
-              <option value="">No Membership</option>
+              <option value="">None</option>
               {memberships.map((m) => (
                 <option key={m.name} value={m.name}>
                   {m.name} (−{m.discountPercent}%)
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Discount Code</label>
+            <input value={form.discountCode} onChange={(e) => setForm({ ...form, discountCode: e.target.value })} placeholder="Optional" />
+          </div>
+          <div>
+            <label>Amount Paid</label>
+            <input type="number" min={0} value={form.amountPaid} onChange={(e) => setForm({ ...form, amountPaid: e.target.value })} />
+          </div>
+          <div>
+            <label>Payment Method</label>
+            <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as (typeof PAYMENT_METHODS)[number] })}>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
                 </option>
               ))}
             </select>
