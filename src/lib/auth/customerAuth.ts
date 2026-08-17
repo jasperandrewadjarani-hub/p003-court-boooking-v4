@@ -5,9 +5,9 @@ import { resolveTenant } from "@/lib/tenant/resolve";
 import { hashPassword, verifyPassword, validatePassword } from "@/lib/auth/password";
 import { sendOtpChallenge, verifyOtpChallenge, normalizeEmail } from "@/lib/auth/otp";
 import { issueSession, verifySession, clearSession } from "@/lib/auth/session";
-import { enqueueEmail } from "@/lib/email/send";
+import { enqueueEmail, dispatchEmail } from "@/lib/email/send";
 import { getEmailTransportMode } from "@/lib/email/transport";
-import { sendViaResend, renderTemplate } from "@/lib/email/resend";
+import { renderTemplate } from "@/lib/email/resend";
 
 const CUSTOMER_SESSION_HOURS = 6;
 
@@ -58,12 +58,12 @@ async function deliverOtp(
     return { alreadySent: result.alreadySent, expiresAt: result.expiresAt, devMode: true as const, devCode: result.code };
   }
 
-  // Real Resend transport. Send the OTP for real and (best-effort) mark its
-  // just-enqueued outbox row delivered. The code is NEVER returned to the
-  // caller in this mode — it only reaches the user via their inbox.
+  // Real transport (Gmail SMTP or Resend). Send the OTP for real and
+  // (best-effort) mark its just-enqueued outbox row delivered. The code is
+  // NEVER returned to the caller in this mode — it only reaches the user's inbox.
   if (!result.alreadySent && result.code) {
     const { subject: subj, html } = renderTemplate(`otp_${purpose}`, { code: result.code, subject });
-    await sendViaResend({ to: email, subject: subj, html });
+    await dispatchEmail({ to: email, subject: subj, html });
     await withTenant(tenantId, (tx) =>
       tx.emailOutbox.updateMany({
         where: { tenantId, template: `otp_${purpose}`, toAddresses: { has: email }, status: "queued" },
