@@ -113,7 +113,19 @@ export async function saveNotificationSettings(tenantId: string, input: Notifica
 export async function saveBookingRules(tenantId: string, input: Partial<BookingRulesSettings>) {
   return saveSettingKey(tenantId, "booking_rules", input);
 }
+// Cap for inline (data:-URI) image uploads stored in settings JSON — logo and
+// GCash QR. ~2MB of encoded string ≈ a ~1.4MB source image, ample for either;
+// keeps the settings row small and rejects anything a browser slipped past the
+// client-side check. http(s):// URLs (the other supported form) are unbounded.
+const MAX_INLINE_IMAGE_CHARS = 2_000_000;
+function assertInlineImageOk(field: string, value: string | null | undefined) {
+  if (value && value.startsWith("data:") && value.length > MAX_INLINE_IMAGE_CHARS) {
+    throw new Error(`${field} image is too large — please use an image under ~1.4MB.`);
+  }
+}
+
 export async function savePaymentSettings(tenantId: string, input: Partial<PaymentSettings>) {
+  assertInlineImageOk("QR", input.qrImageUrl);
   return saveSettingKey(tenantId, "payment_settings", input);
 }
 
@@ -201,6 +213,7 @@ export async function saveBrandingSettings(tenantId: string, input: BrandingSett
     if (k === "logoUrl") continue;
     if (typeof v !== "string" || !HEX.test(v)) throw new Error(`Invalid color for ${k}: "${v}" (expected #RRGGBB).`);
   }
+  assertInlineImageOk("Logo", input.logoUrl);
   await saveSettingKey(tenantId, "branding", input);
   // Mirror the logo to Tenant.logoUrl so the customer header / resolveTenant
   // pick it up without a second settings read.

@@ -7,6 +7,7 @@ import { sendOtpChallenge, verifyOtpChallenge, normalizeEmail } from "@/lib/auth
 import { issueSession, verifySession, clearSession } from "@/lib/auth/session";
 import { enqueueEmail } from "@/lib/email/send";
 import { getEmailTransportMode } from "@/lib/email/transport";
+import { sendViaResend, renderTemplate } from "@/lib/email/resend";
 
 const CUSTOMER_SESSION_HOURS = 6;
 
@@ -57,9 +58,20 @@ async function deliverOtp(
     return { alreadySent: result.alreadySent, expiresAt: result.expiresAt, devMode: true as const, devCode: result.code };
   }
 
-  // Real Resend transport — not wired until Phase F. Fail loudly rather
-  // than silently pretending an email went out.
-  throw new Error("Real email delivery (Resend) isn't wired up yet — set EMAIL_TRANSPORT=console for now.");
+  // Real Resend transport. Send the OTP for real and (best-effort) mark its
+  // just-enqueued outbox row delivered. The code is NEVER returned to the
+  // caller in this mode — it only reaches the user via their inbox.
+  if (!result.alreadySent && result.code) {
+    const { subject: subj, html } = renderTemplate(`otp_${purpose}`, { code: result.code, subject });
+    await sendViaResend({ to: email, subject: subj, html });
+    await withTenant(tenantId, (tx) =>
+      tx.emailOutbox.updateMany({
+        where: { tenantId, template: `otp_${purpose}`, toAddresses: { has: email }, status: "queued" },
+        data: { status: "sent", sentAt: new Date() },
+      })
+    );
+  }
+  return { alreadySent: result.alreadySent, expiresAt: result.expiresAt, devMode: false as const };
 }
 
 export async function registerCustomerAccount(input: {

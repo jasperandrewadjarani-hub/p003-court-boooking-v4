@@ -80,6 +80,30 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
     setStatus(res.ok ? "Branding restored. Reload to see it." : `Error: ${(res as any).error}`);
   }
 
+  // Reads a chosen image file into a validated data: URI (image/* only, ≤1.4MB
+  // source ≈ 2MB encoded — matches the server-side cap). Lets an admin UPLOAD a
+  // logo/QR from disk, same capability v3b had via Google Drive; here the bytes
+  // land inline in the setting instead of a Drive file (invisible to end users).
+  const MAX_UPLOAD_BYTES = 1_400_000;
+  function pickImage(onData: (dataUri: string) => void) {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ""; // allow re-picking the same file
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setStatus("Error: logo/QR must be an image file (PNG, JPG, WebP, or GIF).");
+        return;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setStatus(`Error: image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB) — please use one under 1.4MB.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => onData(String(reader.result));
+      reader.readAsDataURL(file);
+    };
+  }
+
   function Swatch({ k, label }: { k: keyof BrandingSettings; label: string }) {
     const val = String(brandForm[k]);
     return (
@@ -161,14 +185,20 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
           </div>
           <div className="settings-grid" style={{ marginTop: 12 }}>
             <div className="settings-field">
-              <label>Business Logo URL</label>
-              <input value={brandForm.logoUrl} onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })} placeholder="https://…" />
+              <label>Business Logo</label>
+              <input type="file" accept="image/*" onChange={pickImage((d) => setBrandForm({ ...brandForm, logoUrl: d }))} />
+              <input style={{ marginTop: 6 }} value={brandForm.logoUrl.startsWith("data:") ? "" : brandForm.logoUrl} onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })} placeholder="…or paste an image URL" />
             </div>
             <div className="settings-field">
               <label>Logo Preview</label>
               {brandForm.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={brandForm.logoUrl} alt="logo" style={{ height: 48 }} />
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={brandForm.logoUrl} alt="logo" style={{ height: 48 }} />
+                  <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setBrandForm({ ...brandForm, logoUrl: "" })}>
+                    Remove logo
+                  </button>
+                </>
               ) : (
                 <span className="dim mono" style={{ fontSize: 11 }}>No logo set</span>
               )}
@@ -247,10 +277,26 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
             <label>Payment Instructions</label>
             <input value={paymentsForm.paymentInstructions ?? ""} onChange={(e) => setPaymentsForm({ ...paymentsForm, paymentInstructions: e.target.value })} />
           </div>
+          <div className="settings-field">
+            <label>GCash QR Image</label>
+            <input type="file" accept="image/*" onChange={pickImage((d) => setPaymentsForm({ ...paymentsForm, qrImageUrl: d }))} />
+            <input style={{ marginTop: 6 }} value={(paymentsForm.qrImageUrl ?? "").startsWith("data:") ? "" : (paymentsForm.qrImageUrl ?? "")} onChange={(e) => setPaymentsForm({ ...paymentsForm, qrImageUrl: e.target.value })} placeholder="…or paste an image URL" />
+          </div>
+          <div className="settings-field">
+            <label>QR Preview</label>
+            {paymentsForm.qrImageUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={paymentsForm.qrImageUrl} alt="GCash QR" style={{ height: 96, background: "#fff", padding: 4, borderRadius: 6 }} />
+                <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setPaymentsForm({ ...paymentsForm, qrImageUrl: null })}>
+                  Remove QR
+                </button>
+              </>
+            ) : (
+              <span className="dim mono" style={{ fontSize: 11 }}>No QR uploaded</span>
+            )}
+          </div>
         </div>
-        <p className="dim mono" style={{ fontSize: 11 }}>
-          QR image upload requires Supabase Storage — not configured yet (see notes.md), coming with the real Storage transport in Phase F.
-        </p>
 
         <div className="settings-section-title">Reports &amp; Notifications</div>
         <div className="settings-grid">
