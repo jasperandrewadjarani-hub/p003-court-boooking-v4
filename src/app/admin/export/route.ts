@@ -50,8 +50,9 @@ export async function GET(request: Request) {
   summary.addRows([
     { metric: "Date Range", value: `${dateFrom} to ${dateTo}` },
     { metric: "Total Bookings", value: analytics.totalBookings },
-    { metric: "Cancelled", value: analytics.totalCancelled },
-    { metric: "Lapsed", value: analytics.totalLapsed },
+    { metric: "Confirmed + Reserved", value: analytics.confirmedReservedCount },
+    { metric: "Cancelled", value: analytics.cancelledCount },
+    { metric: "Lapsed", value: analytics.lapsedCount },
     { metric: "Total Revenue", value: analytics.totalRevenueMinor / 100 },
     { metric: "Average Booking Value", value: analytics.avgValueMinor / 100 },
     { metric: "Cancellation Rate", value: `${analytics.cancellationRatePercent}%` },

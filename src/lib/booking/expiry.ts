@@ -20,9 +20,13 @@ export async function sweepLapsedBookings(
   tenantId: string,
   rules: Pick<BookingRulesSettings, "reservationHoldMinutes" | "receiptReviewHoldMinutes">
 ): Promise<string[]> {
+  // Staff/front-desk bookings never auto-lapse (v3b expireStalePendingBookings
+  // explicitly excludes Booking Source === STAFF rows) — an admin holding a
+  // walk-in reservation open isn't the same "abandoned checkout" case this
+  // sweep exists to reclaim.
   const lapsedGroups = await tx.$queryRaw<{ id: string }[]>`
     UPDATE booking_groups SET status = 'lapsed', updated_at = now()
-    WHERE tenant_id = ${tenantId}::uuid AND status = 'reserved'
+    WHERE tenant_id = ${tenantId}::uuid AND status = 'reserved' AND source != 'staff'
       AND (
         (payment_status = 'unpaid' AND created_at < now() - (${rules.reservationHoldMinutes} || ' minutes')::interval)
         OR (payment_status = 'awaiting_verification' AND created_at < now() - (${rules.receiptReviewHoldMinutes} || ' minutes')::interval)

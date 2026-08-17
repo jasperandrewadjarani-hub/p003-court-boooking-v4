@@ -72,13 +72,17 @@ export function AnalyticsManager({ initialData, currency }: { initialData: Analy
       </div>
 
       <div className="stat-cards">
-        <StatCard label="Total Bookings" value={data.totalBookings} />
-        <StatCard label="Cancelled" value={data.totalCancelled} />
-        <StatCard label="Lapsed" value={data.totalLapsed} />
+        <StatCard label="Total Booking IDs" value={data.totalBookings} />
+        <StatCard label="Confirmed + Reserved" value={data.confirmedReservedCount} />
+        <StatCard label="Cancelled" value={data.cancelledCount} />
+        <StatCard label="Lapsed" value={data.lapsedCount} />
         <StatCard label="Total Revenue" value={`${currency} ${(data.totalRevenueMinor / 100).toFixed(2)}`} />
         <StatCard label="Avg Booking Value" value={`${currency} ${(data.avgValueMinor / 100).toFixed(2)}`} />
         <StatCard label="Cancellation Rate" value={`${data.cancellationRatePercent}%`} />
       </div>
+      <p className="dim mono" style={{ fontSize: 11, marginTop: -8 }}>
+        Total Booking IDs counts each booking once across all statuses; Confirmed + Reserved is shown separately.
+      </p>
 
       <div className="panel">
         <div className="panel__title">Revenue Over Time</div>

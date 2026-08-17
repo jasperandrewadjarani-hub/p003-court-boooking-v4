@@ -4,17 +4,25 @@ import { withTenant } from "@/lib/tenant/withTenant";
 import { resolveTenant } from "@/lib/tenant/resolve";
 import { requireStaff } from "@/lib/auth/staffAuth";
 import { createBooking, SlotTakenError, type CartItemInput } from "@/lib/booking/create";
+import { recordPayment } from "@/lib/admin/payments";
 
 export interface FrontdeskBookingInput {
   items: CartItemInput[];
   dateKey: string;
-  players: number;
+  players: number; // v3b removed Number of Players from the front-desk form too — accepted for payload-shape compat but never stored (createBooking always writes 1)
   firstName: string;
   lastName: string;
   phone: string;
   email: string;
   notes?: string;
   membershipType?: string;
+  discountCode?: string;
+  // Optional immediate payment collection, matching v3b's
+  // adminCreateFrontdeskBooking optional-payment support — recorded right
+  // after the booking is created, so front desk doesn't need a second trip
+  // to the Bookings tab just to take cash at the counter.
+  amountPaidMinor?: number;
+  paymentMethod?: "cash" | "gcash" | "maya" | "credit_card" | "bank_transfer";
 }
 
 /**
@@ -51,12 +59,30 @@ export async function createFrontdeskBookingAction(input: FrontdeskBookingInput)
       players: input.players,
       customerId: customer.id,
       membershipType: input.membershipType,
+      discountCode: input.discountCode,
       source: "staff",
       staffUserId: staff.userId,
       notes: input.notes,
     });
 
-    return { ok: true as const, result };
+    // Optional immediate payment — a separate withTenant transaction (same
+    // recordPayment used by the admin Bookings tab), run only after the
+    // booking has actually committed. recordPayment itself rejects
+    // amounts that would overpay the booking's total.
+    let payment: Awaited<ReturnType<typeof recordPayment>> | undefined;
+    if (input.amountPaidMinor && input.amountPaidMinor > 0) {
+      payment = await withTenant(tenant.id, (tx) =>
+        recordPayment(tx, {
+          tenantId: tenant.id,
+          bookingGroupId: result.bookingGroupId,
+          method: input.paymentMethod ?? "cash",
+          amountMinor: input.amountPaidMinor!,
+          staffUserId: staff.userId,
+        })
+      );
+    }
+
+    return { ok: true as const, result, payment };
   } catch (err) {
     if (err instanceof SlotTakenError) return { ok: false as const, error: err.message };
     const message = err instanceof Error ? err.message : "Something went wrong.";

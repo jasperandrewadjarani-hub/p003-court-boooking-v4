@@ -22,7 +22,11 @@ import {
   saveHoliday,
   deleteHoliday,
   type HolidayInput,
+  listDiscounts,
+  saveDiscount,
+  type DiscountInput,
 } from "@/lib/admin/masterData";
+import { blockSlots, unblockSlots, type BlockSlotItem } from "@/lib/admin/blockedSlots";
 import {
   getGeneralSettings,
   saveGeneralSettings,
@@ -243,6 +247,49 @@ export async function deleteHolidayAction(id: string) {
   await requireStaff();
   try {
     await deleteHoliday(tenant.id, id);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+// -------------------------------- Discounts ---------------------------------------
+
+export async function listDiscountsAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return listDiscounts(tenant.id);
+}
+
+export async function saveDiscountAction(input: DiscountInput) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveDiscount(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+// ------------------------------- Blocked slots -------------------------------------
+
+export async function blockSlotsAction(dateKey: string, items: BlockSlotItem[]) {
+  const tenant = await resolveTenant();
+  const staff = await requireStaff();
+  try {
+    await blockSlots(tenant.id, dateKey, items, staff.userId);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function unblockSlotsAction(blockIds: string[]) {
+  const tenant = await resolveTenant();
+  const staff = await requireStaff();
+  try {
+    await unblockSlots(tenant.id, blockIds, staff.userId);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };

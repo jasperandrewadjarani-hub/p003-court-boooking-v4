@@ -1,7 +1,7 @@
 "use server";
 
 import { resolveTenant } from "@/lib/tenant/resolve";
-import { getAvailabilityGrid } from "@/lib/booking/availability";
+import { getAvailabilityGrid, getBookingRules } from "@/lib/booking/availability";
 import { createBooking, priceCart, SlotTakenError, type CartItemInput } from "@/lib/booking/create";
 import { getCurrentCustomer } from "@/lib/auth/customerAuth";
 import { getMyBookings } from "@/lib/booking/customerBookings";
@@ -15,12 +15,31 @@ export async function fetchGridAction(dateKey: string) {
 
 /** Live pre-checkout total preview — same calculateCartTotal call the real
  * booking transaction uses (src/lib/booking/create.ts's priceCart), so the
- * preview shown while building a cart can never drift from what's charged. */
-export async function previewCartTotalAction(dateKey: string, items: CartItemInput[], membershipType?: string) {
+ * preview shown while building a cart can never drift from what's charged.
+ * An invalid/exhausted discountCode doesn't fail the whole preview — it
+ * falls back to the undiscounted total and surfaces `discountError` so the
+ * UI can show why the code didn't apply, without blocking the customer from
+ * seeing a total at all. */
+export async function previewCartTotalAction(dateKey: string, items: CartItemInput[], membershipType?: string, discountCode?: string) {
   if (!items.length) return { totalMinor: 0, discountMinor: 0 };
   const tenant = await resolveTenant();
-  const { cart } = await priceCart(tenant.id, dateKey, items, membershipType);
-  return { totalMinor: cart.totalMinor, discountMinor: cart.discountMinor };
+  try {
+    const rules = await getBookingRules(tenant.id);
+    if (discountCode) {
+      try {
+        const { cart } = await priceCart(tenant.id, dateKey, items, membershipType, rules.taxRatePercent, discountCode);
+        return { totalMinor: cart.totalMinor, discountMinor: cart.discountMinor };
+      } catch (err) {
+        const discountError = err instanceof Error ? err.message : "Invalid discount code.";
+        const { cart } = await priceCart(tenant.id, dateKey, items, membershipType, rules.taxRatePercent);
+        return { totalMinor: cart.totalMinor, discountMinor: cart.discountMinor, discountError };
+      }
+    }
+    const { cart } = await priceCart(tenant.id, dateKey, items, membershipType, rules.taxRatePercent);
+    return { totalMinor: cart.totalMinor, discountMinor: cart.discountMinor };
+  } catch (err) {
+    return { totalMinor: 0, discountMinor: 0, discountError: err instanceof Error ? err.message : "Something went wrong." };
+  }
 }
 
 export async function createBookingAction(input: {
@@ -28,6 +47,7 @@ export async function createBookingAction(input: {
   items: CartItemInput[];
   players: number;
   membershipType?: string;
+  discountCode?: string;
 }) {
   const tenant = await resolveTenant();
   const customer = await getCurrentCustomer();

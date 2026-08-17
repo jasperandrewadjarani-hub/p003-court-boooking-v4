@@ -102,9 +102,9 @@ enum PaymentMethod {
   bank_transfer
 }
 
-enum PromoDiscountType {
-  percent
-  fixed_minor
+enum DiscountType {
+  percentage // discountValue = percent off (1-100)
+  fixed_php // discountValue = fixed amount off, in minor units (centavos)
 }
 
 enum EmailOutboxStatus {
@@ -147,8 +147,8 @@ model Tenant {
   bookings        Booking[]
   bookingSequences BookingSequence[]
   payments        Payment[]
-  promos          Promo[]
-  promoRedemptions PromoRedemption[]
+  discounts       Discount[]
+  blockedSlots    BlockedSlot[]
   receipts        Receipt[]
   emailOutbox     EmailOutbox[]
   auditLog        AuditLog[]
@@ -323,8 +323,9 @@ model Court {
   description     String?
   sortOrder       Int         @default(0) @map("sort_order")
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bookings Booking[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings     Booking[]
+  blockedSlots BlockedSlot[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -396,17 +397,21 @@ model BookingGroup {
   totalMinor      Int                 @default(0) @map("total_minor")
   amountPaidMinor Int                 @default(0) @map("amount_paid_minor") // derived, recomputed from the Payments ledger — never written directly except by that recomputation
   idempotencyKey  String              @map("idempotency_key")
-  promoId         String?             @map("promo_id") @db.Uuid
+  // v3b discount model: the applied promotion code + the group-level discount
+  // amount (stored once per group, subtracted once by group readers). Matches
+  // v3b's Bookings-sheet "Discount Code" / "Discount Amount" (first-row-only).
+  discountId          String?         @map("discount_id") @db.Uuid
+  discountCode        String?         @map("discount_code")
+  discountAmountMinor Int             @default(0) @map("discount_amount_minor")
   createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  promo    Promo?    @relation(fields: [promoId], references: [id], onDelete: SetNull)
+  discount Discount? @relation(fields: [discountId], references: [id], onDelete: SetNull)
   bookings Booking[]
   payments Payment[]
   receipts Receipt[]
-  promoRedemption PromoRedemption?
 
   @@unique([tenantId, idempotencyKey])
   @@unique([tenantId, reference])
@@ -489,51 +494,54 @@ model Payment {
   @@map("payments")
 }
 
-/// The atomic "first N bookings" discount pattern (master plan §4.5):
-/// UPDATE promos SET redeemed = redeemed + 1 WHERE redeemed < max_redemptions
-/// RETURNING redeemed — zero rows back means "exhausted", a normal outcome,
-/// never an error. Never read-then-write from application code.
-model Promo {
-  id             String            @id @default(uuid()) @db.Uuid
-  tenantId       String            @map("tenant_id") @db.Uuid
-  name           String
-  code           String
-  discountType   PromoDiscountType @map("discount_type")
-  discountValue  Int               @map("discount_value") // percent (0-100) or minor units, per discountType
-  maxRedemptions Int               @map("max_redemptions")
-  redeemed       Int               @default(0)
-  startsAt       DateTime          @map("starts_at") @db.Timestamptz(3)
-  endsAt         DateTime          @map("ends_at") @db.Timestamptz(3)
-  active         Boolean           @default(true)
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+/// v3b Discounts — promotion codes. Faithful to v3b's DiscountService schema:
+/// no date bounds (codes don't expire by date), `maxAvailments = 0` means
+/// UNLIMITED (not "zero allowed"), `timesAvailed` is the atomic redemption
+/// counter. Consumed inside the booking transaction via
+/// `UPDATE discounts SET times_availed = times_availed + 1
+///  WHERE id = ... AND (max_availments = 0 OR times_availed < max_availments)
+///  RETURNING times_availed` — zero rows back means exhausted (a normal
+/// outcome, not an error), matching v3b's consumeDiscountQuote_ under-lock.
+model Discount {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  code           String // normalized uppercase, ^[A-Z0-9][A-Z0-9_-]{0,49}$
+  discountType   DiscountType @map("discount_type")
+  discountValue  Int          @map("discount_value") // percent (1-100) for percentage; minor units for fixed_php
+  maxAvailments  Int          @default(0) @map("max_availments") // 0 = unlimited
+  timesAvailed   Int          @default(0) @map("times_availed")
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookingGroups BookingGroup[]
-  redemptions  PromoRedemption[]
 
   @@unique([tenantId, code])
-  @@index([tenantId, active, startsAt, endsAt])
-  @@map("promos")
+  @@index([tenantId, active])
+  @@map("discounts")
 }
 
-/// Ledger row per successful redemption — makes the atomic counter above
-/// auditable and reconcilable (master plan §4.5), and its
-/// UNIQUE(promoId, bookingGroupId) is a second, independent guard against a
-/// booking group ever being double-counted against the same promo.
-model PromoRedemption {
-  id             String   @id @default(uuid()) @db.Uuid
-  tenantId       String   @map("tenant_id") @db.Uuid
-  promoId        String   @map("promo_id") @db.Uuid
-  bookingGroupId String   @unique @map("booking_group_id") @db.Uuid
-  discountMinor  Int      @map("discount_minor")
-  redeemedAt     DateTime @default(now()) @map("redeemed_at") @db.Timestamptz(3)
+/// v3b BlockedSlots — admin-created non-booking court closures. Distinct from a
+/// court's maintenance status: a block targets a specific court + date + time
+/// window. Overlap checks (block-vs-booking and block-vs-block) run inside the
+/// relevant transaction, mirroring v3b's BlockedSlotService under-lock checks.
+model BlockedSlot {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  courtId         String   @map("court_id") @db.Uuid
+  localDate       DateTime @map("local_date") @db.Date
+  startsAt        DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime @map("ends_at") @db.Timestamptz(3)
+  reason          String?
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  promo        Promo        @relation(fields: [promoId], references: [id], onDelete: Restrict)
-  bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court  Court  @relation(fields: [courtId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, promoId, bookingGroupId])
-  @@map("promo_redemptions")
+  @@index([tenantId, localDate, courtId])
+  @@map("blocked_slots")
 }
 
 // -------------------------------- Receipts & jobs ------------------------------

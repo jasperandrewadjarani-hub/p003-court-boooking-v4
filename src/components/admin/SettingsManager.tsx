@@ -90,21 +90,40 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
         <div className="settings-grid">
           {(
             [
-              ["openHour", "Open Hour"],
-              ["closeHour", "Close Hour"],
+              ["customerGridStartTime", "Customer Grid Start"],
+              ["customerGridEndTime", "Customer Grid End"],
+              ["adminGridStartTime", "Admin Grid Start"],
+              ["adminGridEndTime", "Admin Grid End"],
+            ] as [keyof BookingRulesSettings, string][]
+          ).map(([key, label]) => (
+            <div className="settings-field" key={key}>
+              <label>{label} (HH:MM)</label>
+              <input
+                type="text"
+                placeholder="HH:MM"
+                value={String(rulesForm[key])}
+                onChange={(e) => setRulesForm({ ...rulesForm, [key]: e.target.value })}
+              />
+            </div>
+          ))}
+          {(
+            [
               ["slotMinutes", "Slot Minutes"],
-              ["turnoverBufferMinutes", "Turnover Buffer Minutes"],
+              ["turnoverBufferMinutes", "Buffer Minutes"],
               ["maxAdvanceBookingDays", "Max Advance Booking Days"],
               ["minBookingMinutes", "Min Booking Minutes"],
               ["maxBookingMinutes", "Max Booking Minutes"],
               ["maxCourtHoursPerBooking", "Max Court Hours Per Booking"],
+              ["maxPendingCustomerBookings", "Max Pending Customer Bookings"],
+              ["cancellationWindowHours", "Cancellation Window Hours"],
+              ["taxRatePercent", "Tax Rate Percent"],
               ["reservationHoldMinutes", "Reservation Hold Minutes"],
               ["receiptReviewHoldMinutes", "Receipt Review Hold Minutes"],
             ] as [keyof BookingRulesSettings, string][]
           ).map(([key, label]) => (
             <div className="settings-field" key={key}>
               <label>{label}</label>
-              <input type="number" value={rulesForm[key]} onChange={(e) => setRulesForm({ ...rulesForm, [key]: Number(e.target.value) })} />
+              <input type="number" value={Number(rulesForm[key])} onChange={(e) => setRulesForm({ ...rulesForm, [key]: Number(e.target.value) })} />
             </div>
           ))}
         </div>

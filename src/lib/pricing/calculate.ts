@@ -152,18 +152,67 @@ export function calculatePrice(input: PriceCalcInput): PriceCalcResult {
   };
 }
 
-/** Sums calculatePrice across a multi-item cart. */
+/** A pre-resolved discount-code quote's type/value — the raw config off the
+ *  Discount row (percent 1-100, or fixed minor units), NOT a pre-computed
+ *  amount. calculateCartTotal derives the actual amount itself, against its
+ *  own cart-level taxableBeforePromo, so it always reflects the current cart
+ *  contents (matches v3b's getDiscountQuote_(code, taxableBeforePromotion)). */
+export interface CartDiscountInput {
+  type: "percentage" | "fixed_php";
+  value: number;
+}
+
+export interface CartTotalResult {
+  items: PriceCalcResult[];
+  subtotalMinor: number; // sum of raw pre-membership-discount segment pricing
+  membershipDiscountMinor: number; // sum of each item's membership % discount
+  discountMinor: number; // the discount-code (promo) amount — v3b's "promotion.amount"
+  taxMinor: number; // computed on the post-promo taxable amount
+  totalMinor: number; // net total: taxable (post-promo) + tax
+  totalHours: number;
+}
+
+/**
+ * Sums calculatePrice across a multi-item cart, then applies v3b's exact
+ * cart-level discount-code + tax order (PricingService.js calculateCartTotal_):
+ *   subtotal → membershipDiscount → taxableBeforePromo = subtotal - membershipDiscount
+ *   → promoAmount = quote(code, taxableBeforePromo), clamped to [0, taxableBeforePromo]
+ *   → taxable = taxableBeforePromo - promoAmount → tax = round(taxable * taxRate/100)
+ *   → total = taxable + tax
+ * The discount code applies AFTER membership %, BEFORE tax — same as the
+ * per-item calculatePrice's own membership-then-tax order, just promoted to
+ * the whole-cart level since a promo amount (especially fixed_php) has to be
+ * computed once against the cart's combined taxable base, not per item.
+ */
 export function calculateCartTotal(
   items: Array<{ court: CourtPricingInput; startTime: string; endTime: string }>,
-  shared: Omit<PriceCalcInput, "court" | "startTime" | "endTime">
-): { items: PriceCalcResult[]; subtotalMinor: number; discountMinor: number; taxMinor: number; totalMinor: number; totalHours: number } {
-  const results = items.map((item) => calculatePrice({ ...shared, court: item.court, startTime: item.startTime, endTime: item.endTime }));
+  shared: Omit<PriceCalcInput, "court" | "startTime" | "endTime"> & { discount?: CartDiscountInput | null }
+): CartTotalResult {
+  const { discount, ...priceShared } = shared;
+  const results = items.map((item) => calculatePrice({ ...priceShared, court: item.court, startTime: item.startTime, endTime: item.endTime }));
+
+  const subtotalMinor = results.reduce((s, r) => s + r.subtotalMinor, 0);
+  const membershipDiscountMinor = results.reduce((s, r) => s + r.discountMinor, 0);
+  const taxableBeforePromo = subtotalMinor - membershipDiscountMinor;
+
+  let discountMinor = 0;
+  if (discount) {
+    const raw = discount.type === "percentage" ? Math.round((taxableBeforePromo * discount.value) / 100) : discount.value;
+    discountMinor = Math.min(Math.max(raw, 0), taxableBeforePromo);
+  }
+
+  const taxable = taxableBeforePromo - discountMinor;
+  const taxRatePercent = priceShared.taxRatePercent ?? 0;
+  const taxMinor = Math.round(taxable * (taxRatePercent / 100));
+  const totalMinor = taxable + taxMinor;
+
   return {
     items: results,
-    subtotalMinor: results.reduce((s, r) => s + r.subtotalMinor, 0),
-    discountMinor: results.reduce((s, r) => s + r.discountMinor, 0),
-    taxMinor: results.reduce((s, r) => s + r.taxMinor, 0),
-    totalMinor: results.reduce((s, r) => s + r.totalMinor, 0),
+    subtotalMinor: Math.round(subtotalMinor),
+    membershipDiscountMinor,
+    discountMinor,
+    taxMinor,
+    totalMinor,
     totalHours: results.reduce((s, r) => s + r.hours, 0),
   };
 }

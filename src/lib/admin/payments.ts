@@ -18,6 +18,15 @@ export async function recordPayment(
   if (!group) throw new Error("Booking not found.");
   if (args.amountMinor <= 0) throw new Error("Enter a valid payment amount.");
 
+  // Reject overpayment above the remaining balance — v3b's recordPayment_
+  // rejects amounts exceeding the calculated remaining balance (CURRENT_STATE
+  // §4.2 "overpayment above the calculated remaining balance is rejected").
+  const alreadyPaid = await tx.payment.aggregate({ where: { tenantId: args.tenantId, bookingGroupId: args.bookingGroupId }, _sum: { amountMinor: true } });
+  const remainingMinor = group.totalMinor - (alreadyPaid._sum.amountMinor ?? 0);
+  if (args.amountMinor > remainingMinor) {
+    throw new Error(`Payment exceeds the remaining balance of ${(remainingMinor / 100).toFixed(2)}.`);
+  }
+
   const receiptNumber = `PMT-${Date.now()}-${randomBytes(3).toString("hex").toUpperCase()}`;
 
   await tx.payment.create({

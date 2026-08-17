@@ -1,8 +1,12 @@
 import { withTenant } from "@/lib/tenant/withTenant";
-import { getBookingRules } from "@/lib/booking/availability";
+import { getBookingRules, gridWindowMinutes } from "@/lib/booking/availability";
 import { sweepLapsedBookings } from "@/lib/booking/expiry";
 
-export type DispatchTileState = "vacant" | "paid" | "unpaid" | "blocked";
+// "maintenance" = the court itself is marked out of service (Court.status).
+// "blocked" = an admin-created BlockedSlot row for this specific date/time —
+// distinct concepts in v3b (BlockedSlotService vs. Court status), rendered
+// with distinct tile states here too.
+export type DispatchTileState = "vacant" | "paid" | "unpaid" | "blocked" | "maintenance";
 
 export interface DispatchTile {
   start: string;
@@ -16,6 +20,12 @@ export interface DispatchTile {
     status: string;
     totalMinor: number;
   };
+  // Present only when state === "blocked" — lets the UI offer an "Unblock"
+  // action against the specific BlockedSlot row(s) covering this tile.
+  block?: {
+    id: string;
+    reason: string | null;
+  };
 }
 
 export interface DispatchCourt {
@@ -28,6 +38,10 @@ export interface DispatchCourt {
 export interface DispatchGridData {
   date: string;
   slotMinutes: number;
+  // Customer-facing booking window (minutes-from-midnight), distinct from the
+  // admin grid's own full-day window — lets the UI offer a client-side
+  // "Customer hours" crop toggle without a second fetch.
+  customerWindow: { startMin: number; endMin: number };
   courts: DispatchCourt[];
 }
 
@@ -44,13 +58,20 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
 
     const courts = await tx.court.findMany({ where: { tenantId, status: { not: "closed" } }, orderBy: { sortOrder: "asc" } });
 
+    const dayDate = new Date(dateKey + "T00:00:00.000Z");
     const dayBookings = await tx.booking.findMany({
-      where: { tenantId, localDate: new Date(dateKey + "T00:00:00.000Z"), status: { in: [...ACTIVE_STATUSES] as any } },
+      where: { tenantId, localDate: dayDate, status: { in: [...ACTIVE_STATUSES] as any } },
       include: { bookingGroup: { include: { customer: true } } },
     });
+    // Admin-created blocked slots — v3b renders these as a distinct "Blocked"
+    // tile state, separate from a court's own "maintenance" status.
+    const dayBlocks = await tx.blockedSlot.findMany({
+      where: { tenantId, localDate: dayDate },
+    });
 
-    const openMin = rules.openHour * 60;
-    const closeMin = rules.closeHour * 60;
+    // Admin dispatch uses the ADMIN grid window (v3b live: 00:00-00:00 = full
+    // 24h), not the customer-facing window.
+    const [openMin, closeMin] = gridWindowMinutes(rules.adminGridStartTime, rules.adminGridEndTime);
     const slotMin = rules.slotMinutes;
 
     const dispatchCourts: DispatchCourt[] = courts.map((court) => {
@@ -61,7 +82,18 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
         const label = { start: minutesToTimeStr(slotStart), end: minutesToTimeStr(slotEnd) };
 
         if (court.status === "maintenance") {
-          slots.push({ ...label, state: "blocked", courtId: court.id });
+          slots.push({ ...label, state: "maintenance", courtId: court.id });
+          continue;
+        }
+
+        const block = dayBlocks.find((b) => {
+          if (b.courtId !== court.id) return false;
+          const bStart = toMinutes(formatUtcTime(b.startsAt));
+          const bEnd = toMinutes(formatUtcTime(b.endsAt));
+          return slotStart < bEnd && slotEnd > bStart;
+        });
+        if (block) {
+          slots.push({ ...label, state: "blocked", courtId: court.id, block: { id: block.id, reason: block.reason } });
           continue;
         }
 
@@ -94,7 +126,13 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
       return { courtId: court.id, courtName: court.name, description: court.description, slots };
     });
 
-    return { date: dateKey, slotMinutes: slotMin, courts: dispatchCourts };
+    const [custStart, custEnd] = gridWindowMinutes(rules.customerGridStartTime, rules.customerGridEndTime);
+    return {
+      date: dateKey,
+      slotMinutes: slotMin,
+      customerWindow: { startMin: custStart, endMin: custEnd },
+      courts: dispatchCourts,
+    };
   });
 }
 

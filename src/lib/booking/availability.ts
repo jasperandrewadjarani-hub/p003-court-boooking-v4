@@ -3,31 +3,56 @@ import { toMinutes, minutesToTimeStr } from "@/lib/pricing/calculate";
 import { sweepLapsedBookings } from "@/lib/booking/expiry";
 import type { Prisma } from "@/generated/prisma/client";
 
+/** Mirrors v3b's Config booking-rule keys. Grid windows are per-audience
+ *  HH:MM strings (v3b splits CUSTOMER_GRID_* from ADMIN_GRID_*). An end of
+ *  "00:00" means midnight/end-of-day (24h) — see gridWindowMinutes(). */
 export interface BookingRulesSettings {
-  openHour: number;
-  closeHour: number;
   slotMinutes: number;
-  turnoverBufferMinutes: number;
+  customerGridStartTime: string; // "HH:MM"
+  customerGridEndTime: string; // "HH:MM"; "00:00" = midnight (end of day)
+  adminGridStartTime: string;
+  adminGridEndTime: string;
+  turnoverBufferMinutes: number; // v3b BUFFER_MINUTES
   maxAdvanceBookingDays: number;
   minBookingMinutes: number;
   maxBookingMinutes: number;
-  maxCourtHoursPerBooking: number; // v2's MAX_COURT_HOURS_PER_BOOKING — caps a cart's total (courts × hours)
-  reservationHoldMinutes: number; // v2's RESERVATION_HOLD_MINUTES — unpaid hold window before auto-lapse
-  receiptReviewHoldMinutes: number; // v2's RECEIPT_REVIEW_HOLD_MINUTES — extended window once a receipt is uploaded
+  maxCourtHoursPerBooking: number; // v3b MAX_COURT_HOURS_PER_BOOKING — caps a cart's total (courts × hours)
+  maxPendingCustomerBookings: number; // v3b MAX_PENDING_CUSTOMER_BOOKINGS — cap on Reserved web bookings per customer
+  cancellationWindowHours: number; // v3b CANCELLATION_WINDOW_HOURS — inside this window a cancel fee "may apply"
+  taxRatePercent: number; // v3b TAX_RATE (0 = no tax)
+  reservationHoldMinutes: number; // v3b RESERVATION_HOLD_MINUTES — unpaid hold window before auto-lapse
+  receiptReviewHoldMinutes: number; // v3b RECEIPT_REVIEW_HOLD_MINUTES — extended window once a receipt is uploaded
 }
 
+// v3b live (Dink & Dunk) effective config, per CURRENT_STATE doc §12.5.
 const DEFAULT_RULES: BookingRulesSettings = {
-  openHour: 6,
-  closeHour: 22,
-  slotMinutes: 30,
-  turnoverBufferMinutes: 10,
+  slotMinutes: 60,
+  customerGridStartTime: "08:00",
+  customerGridEndTime: "23:00",
+  adminGridStartTime: "00:00",
+  adminGridEndTime: "00:00", // full 24h
+  turnoverBufferMinutes: 0,
   maxAdvanceBookingDays: 30,
-  minBookingMinutes: 30,
-  maxBookingMinutes: 180,
-  maxCourtHoursPerBooking: 12,
-  reservationHoldMinutes: 20,
-  receiptReviewHoldMinutes: 120,
+  minBookingMinutes: 60,
+  maxBookingMinutes: 2500,
+  maxCourtHoursPerBooking: 72,
+  maxPendingCustomerBookings: 2,
+  cancellationWindowHours: 12,
+  taxRatePercent: 0,
+  reservationHoldMinutes: 30,
+  receiptReviewHoldMinutes: 1440,
 };
+
+/** Resolves an HH:MM grid window to [startMin, endMin] in minutes-from-
+ *  midnight. An end of "00:00" (or any end <= start) means end-of-day =
+ *  1440, matching v3b's admin "00:00–00:00" = full 24h and a customer
+ *  window that ends at midnight. */
+export function gridWindowMinutes(startTime: string, endTime: string): [number, number] {
+  const startMin = toMinutes(startTime);
+  let endMin = toMinutes(endTime);
+  if (endMin <= startMin) endMin = 1440;
+  return [startMin, endMin];
+}
 
 /** Pure helper — reads booking_rules from an ALREADY-OPEN transaction
  *  client, rather than opening its own. Every DB round trip is expensive
@@ -48,7 +73,7 @@ export async function getBookingRules(tenantId: string): Promise<BookingRulesSet
 export interface GridSlot {
   start: string;
   end: string;
-  status: "available" | "booked" | "maintenance";
+  status: "available" | "booked" | "maintenance" | "blocked";
 }
 
 export interface GridCourt {
@@ -88,19 +113,21 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
       orderBy: { sortOrder: "asc" },
     });
 
+    const dayDate = new Date(dateKey + "T00:00:00.000Z");
     // local_date is a DATE column (no time component) — exact equality,
     // not a range, is the correct comparison.
     const dayBookings = await tx.booking.findMany({
-      where: {
-        tenantId,
-        localDate: new Date(dateKey + "T00:00:00.000Z"),
-        status: { in: [...ACTIVE_STATUSES] as any },
-      },
+      where: { tenantId, localDate: dayDate, status: { in: [...ACTIVE_STATUSES] as any } },
       select: { courtId: true, startsAt: true, endsAt: true, turnoverBufferMinutes: true },
     });
+    // Admin-created blocked slots — render as "Blocked" (v3b), distinct from
+    // a court's maintenance status.
+    const dayBlocks = await tx.blockedSlot.findMany({
+      where: { tenantId, localDate: dayDate },
+      select: { courtId: true, startsAt: true, endsAt: true },
+    });
 
-    const openMin = rules.openHour * 60;
-    const closeMin = rules.closeHour * 60;
+    const [openMin, closeMin] = gridWindowMinutes(rules.customerGridStartTime, rules.customerGridEndTime);
     const slotMin = rules.slotMinutes;
 
     const gridCourts: GridCourt[] = courts.map((court) => {
@@ -111,6 +138,15 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
         let status: GridSlot["status"] = "available";
         if (court.status === "maintenance") {
           status = "maintenance";
+        } else if (
+          dayBlocks.some((b) => {
+            if (b.courtId !== court.id) return false;
+            const bStart = toMinutes(formatLocalTime(b.startsAt));
+            const bEnd = toMinutes(formatLocalTime(b.endsAt));
+            return slotStart < bEnd && slotEnd > bStart;
+          })
+        ) {
+          status = "blocked";
         } else {
           const overlapping = dayBookings.some((b) => {
             if (b.courtId !== court.id) return false;

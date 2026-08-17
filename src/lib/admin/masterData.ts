@@ -1,5 +1,6 @@
 import "server-only";
 import { withTenant } from "@/lib/tenant/withTenant";
+import { normalizeDiscountCode } from "@/lib/booking/discounts";
 
 // ---------------------------------- Courts -----------------------------------
 
@@ -108,4 +109,44 @@ export async function saveHoliday(tenantId: string, input: HolidayInput) {
 
 export async function deleteHoliday(tenantId: string, id: string) {
   return withTenant(tenantId, (tx) => tx.holiday.delete({ where: { id } }));
+}
+
+// -------------------------------- Discounts -------------------------------------
+
+export interface DiscountInput {
+  code: string;
+  discountType: "percentage" | "fixed_php";
+  discountValue: number;
+  maxAvailments: number; // 0 = unlimited
+  active: boolean;
+}
+
+export async function listDiscounts(tenantId: string) {
+  return withTenant(tenantId, (tx) => tx.discount.findMany({ where: { tenantId }, orderBy: { code: "asc" } }));
+}
+
+/** Upserts by (tenantId, code) — matches v3b's adminSaveDiscount, which
+ *  preserves Times Availed on edit (the update clause here simply never
+ *  touches timesAvailed, so an existing row's usage count survives untouched). */
+export async function saveDiscount(tenantId: string, input: DiscountInput) {
+  const code = normalizeDiscountCode(input.code);
+  return withTenant(tenantId, (tx) =>
+    tx.discount.upsert({
+      where: { tenantId_code: { tenantId, code } },
+      update: {
+        discountType: input.discountType,
+        discountValue: input.discountValue,
+        maxAvailments: input.maxAvailments,
+        active: input.active,
+      },
+      create: {
+        tenantId,
+        code,
+        discountType: input.discountType,
+        discountValue: input.discountValue,
+        maxAvailments: input.maxAvailments,
+        active: input.active,
+      },
+    })
+  );
 }
