@@ -3,7 +3,7 @@
 import { resolveTenant } from "@/lib/tenant/resolve";
 import { requireStaff } from "@/lib/auth/staffAuth";
 import { getDispatchGrid } from "@/lib/admin/dispatchGrid";
-import { listBookings, type BookingFilters } from "@/lib/admin/bookings";
+import { listBookings, getBookingGroupById, type BookingFilters } from "@/lib/admin/bookings";
 import { recordPayment } from "@/lib/admin/payments";
 import { withTenant } from "@/lib/tenant/withTenant";
 import {
@@ -62,6 +62,12 @@ export async function listBookingsAction(filters: BookingFilters) {
   const tenant = await resolveTenant();
   await requireStaff();
   return listBookings(tenant.id, filters);
+}
+
+export async function getBookingGroupAction(bookingGroupId: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return getBookingGroupById(tenant.id, bookingGroupId);
 }
 
 const EDITABLE_FIELDS = ["firstName", "lastName", "mobileNumber", "notes"] as const;

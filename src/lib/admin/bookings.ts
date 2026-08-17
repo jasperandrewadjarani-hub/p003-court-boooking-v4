@@ -68,21 +68,38 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
       },
     });
 
-    return groups.map((g) => ({
-      id: g.id,
-      reference: g.reference,
-      dateLabel: g.bookings[0]?.localDate?.toISOString().slice(0, 10) ?? "",
-      customerName: `${g.customer.firstName} ${g.customer.lastName}`.trim(),
-      phone: g.customer.mobileNumber,
-      email: g.customer.user.email,
-      status: g.status,
-      paymentStatus: g.paymentStatus,
-      amountPaidMinor: g.amountPaidMinor,
-      totalMinor: g.totalMinor,
-      notes: g.notes,
-      players: g.bookings[0]?.players ?? 1,
-      items: g.bookings.map((b) => ({ courtName: b.court.name, start: formatUtcTime(b.startsAt), end: formatUtcTime(b.endsAt), priceMinor: b.priceMinor })),
-    }));
+    return groups.map(mapAdminGroup);
+  });
+}
+
+// Shared mapper so the dispatch-grid single-fetch and the list stay identical.
+function mapAdminGroup(g: any): AdminBookingGroup {
+  return {
+    id: g.id,
+    reference: g.reference,
+    dateLabel: g.bookings[0]?.localDate?.toISOString().slice(0, 10) ?? "",
+    customerName: `${g.customer.firstName} ${g.customer.lastName}`.trim(),
+    phone: g.customer.mobileNumber,
+    email: g.customer.user.email,
+    status: g.status,
+    paymentStatus: g.paymentStatus,
+    amountPaidMinor: g.amountPaidMinor,
+    totalMinor: g.totalMinor,
+    notes: g.notes,
+    players: g.bookings[0]?.players ?? 1,
+    items: g.bookings.map((b: any) => ({ courtName: b.court.name, start: formatUtcTime(b.startsAt), end: formatUtcTime(b.endsAt), priceMinor: b.priceMinor })),
+  };
+}
+
+/** Single booking group by id — used by the dispatch grid to open the ops
+ *  modal when an admin clicks an occupied block. */
+export async function getBookingGroupById(tenantId: string, id: string): Promise<AdminBookingGroup | null> {
+  return withTenant(tenantId, async (tx) => {
+    const g = await tx.bookingGroup.findFirst({
+      where: { tenantId, id },
+      include: { customer: { include: { user: true } }, bookings: { include: { court: true }, orderBy: { startsAt: "asc" } } },
+    });
+    return g ? mapAdminGroup(g) : null;
   });
 }
 

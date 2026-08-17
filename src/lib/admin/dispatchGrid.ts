@@ -14,6 +14,7 @@ export interface DispatchTile {
   state: DispatchTileState;
   courtId: string;
   booking?: {
+    id: string;
     reference: string | null;
     customerName: string;
     paymentStatus: string;
@@ -115,6 +116,7 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
           state: isPaid ? "paid" : "unpaid",
           courtId: court.id,
           booking: {
+            id: match.bookingGroup.id,
             reference: match.bookingGroup.reference,
             customerName: `${match.bookingGroup.customer.firstName} ${match.bookingGroup.customer.lastName}`.trim(),
             paymentStatus: match.bookingGroup.paymentStatus,

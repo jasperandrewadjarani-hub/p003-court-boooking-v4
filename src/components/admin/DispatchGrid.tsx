@@ -1,11 +1,13 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
-import { fetchDispatchGridAction, blockSlotsAction, unblockSlotsAction } from "@/app/admin/actions";
+import { fetchDispatchGridAction, blockSlotsAction, unblockSlotsAction, getBookingGroupAction } from "@/app/admin/actions";
 import { createFrontdeskBookingAction } from "@/lib/admin/frontdesk";
 import { previewCartTotalAction } from "@/app/actions";
-import type { DispatchGridData } from "@/lib/admin/dispatchGrid";
+import type { DispatchGridData, DispatchCourt, DispatchTile } from "@/lib/admin/dispatchGrid";
 import type { MembershipOption } from "@/lib/booking/memberships";
+import type { AdminBookingGroup } from "@/lib/admin/bookings";
+import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
 
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
@@ -22,6 +24,11 @@ function formatClock(hhmm: string): string {
 function formatDateLabel(key: string): string {
   const d = new Date(key + "T00:00:00");
   return `${d.getDate()}-${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()]}`;
+}
+function formatDateHeader(key: string): string {
+  const d = new Date(key + "T00:00:00");
+  const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+  return `${formatDateLabel(key)}-${String(d.getFullYear()).slice(2)} (${wd})`;
 }
 
 function toMin(hhmm: string): number {
@@ -61,6 +68,15 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
   const [cropCustomerHours, setCropCustomerHours] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Clicking an occupied block opens the full Booking Operations modal.
+  const [opsBooking, setOpsBooking] = useState<AdminBookingGroup | null>(null);
+
+  function openBooking(id: string) {
+    startTransition(async () => {
+      const b = await getBookingGroupAction(id);
+      if (b) setOpsBooking(b);
+    });
+  }
 
   function loadDate(key: string) {
     setDateKey(key);
@@ -130,6 +146,47 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
     });
   }, [rowCount, cropCustomerHours, grid]);
 
+  // Courts limited to the visible rows, so the merge math (below) runs on the
+  // exact sequence being rendered. Each court's `slots` is the cropped list.
+  const courtsV = useMemo<DispatchCourt[]>(
+    () => grid.courts.map((c) => ({ ...c, slots: visibleRows.map((r) => c.slots[r]) })),
+    [grid, visibleRows]
+  );
+
+  // v3b block-merge helpers: a booking group renders as ONE tile spanning the
+  // contiguous rectangle of courts × time-rows it occupies (same booking id +
+  // state). rowSpan = vertical run; courtSpan = horizontal run of courts whose
+  // vertical run matches. Continuation cells are skipped.
+  const key = (s?: DispatchTile) => (s?.booking ? s.booking.id : null);
+  function rowSpanAt(slots: DispatchTile[], i: number): number {
+    const k = key(slots[i]);
+    if (!k) return 1;
+    let n = 1;
+    for (let j = i + 1; j < slots.length; j++) {
+      if (key(slots[j]) !== k || slots[j].state !== slots[i].state) break;
+      n++;
+    }
+    return n;
+  }
+  const skipRowCont = (slots: DispatchTile[], i: number) => i > 0 && !!key(slots[i]) && key(slots[i]) === key(slots[i - 1]) && slots[i].state === slots[i - 1].state;
+  function courtSpanAt(ci: number, i: number, rowSpan: number): number {
+    const s = courtsV[ci].slots[i];
+    if (!key(s)) return 1;
+    let n = 1;
+    for (let j = ci + 1; j < courtsV.length; j++) {
+      const c = courtsV[j].slots[i];
+      if (key(c) !== key(s) || c.state !== s.state || rowSpanAt(courtsV[j].slots, i) !== rowSpan) break;
+      n++;
+    }
+    return n;
+  }
+  const skipCourtCont = (ci: number, i: number) => {
+    if (ci < 1) return false;
+    const cur = courtsV[ci].slots[i], prev = courtsV[ci - 1].slots[i];
+    if (!key(cur) || key(cur) !== key(prev) || cur.state !== prev.state) return false;
+    return rowSpanAt(courtsV[ci].slots, i) === rowSpanAt(courtsV[ci - 1].slots, i);
+  };
+
   return (
     <div className="panel dispatch-panel">
       <div className="dispatch-header">
@@ -160,13 +217,18 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
         <span><i className="dispatch-dot blocked" />Blocked</span>
       </div>
 
+      <div className="dispatch-date-picker">
+        <input type="date" className="input-sm" value={dateKey} onChange={(e) => e.target.value && loadDate(e.target.value)} />
+        <span className="dispatch-date-label">{formatDateHeader(dateKey)}</span>
+      </div>
+
       <div className="dispatch-date-row">
         {dateButtons.map((key) => {
           const d = new Date(key + "T00:00:00");
           return (
             <button key={key} className={`dispatch-date-chip ${key === dateKey ? "active" : ""}`} onClick={() => loadDate(key)}>
-              <strong>{d.getDate()}</strong>
-              <span>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]}</span>
+              <strong>{formatDateLabel(key)}</strong>
+              <span>{["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][d.getDay()]}</span>
             </button>
           );
         })}
@@ -177,48 +239,49 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
           className="dispatch-grid"
           style={{ ["--dispatch-courts" as string]: grid.courts.length || 1, ["--dispatch-slots" as string]: visibleRows.length || 1 }}
         >
-          <div className="dispatch-time-head"><span>Time</span></div>
-          {grid.courts.map((c) => (
-            <div className="dispatch-court-head" key={c.courtId}>
+          <div className="dispatch-time-head" style={{ gridColumn: 1, gridRow: 1 }}><span>Time</span></div>
+          {courtsV.map((c, ci) => (
+            <div className="dispatch-court-head" key={c.courtId} style={{ gridColumn: ci + 2, gridRow: 1 }}>
               {c.courtName}
               {c.description && <span>{c.description}</span>}
             </div>
           ))}
-          {visibleRows.map((i) => (
+          {courtsV[0]?.slots.map((_, i) => (
             <Fragment key={i}>
-              <div className="dispatch-time-cell">
+              <div className="dispatch-time-cell" style={{ gridColumn: 1, gridRow: i + 2 }}>
                 <span className="dtc-range">
-                  {formatTime(grid.courts[0].slots[i].start)}
+                  <span className="dtc-start">{formatTime(courtsV[0].slots[i].start)}</span>
                   <span className="dtc-dash">–</span>
-                  <span className="dtc-end">{formatTime(grid.courts[0].slots[i].end)}</span>
+                  <span className="dtc-end">{formatTime(courtsV[0].slots[i].end)}</span>
                 </span>
               </div>
-              {grid.courts.map((court) => {
+              {courtsV.map((court, ci) => {
                 const slot = court.slots[i];
-                const key = `${court.courtId}__${slot.start}`;
-                const isSelected = selected.some((s) => s.key === key);
+                const isBooking = !!slot.booking;
+                // Skip cells covered by a merged block that started above or to the left.
+                if (isBooking && (skipRowCont(court.slots, i) || skipCourtCont(ci, i))) return null;
+                const rSpan = isBooking ? rowSpanAt(court.slots, i) : 1;
+                const cSpan = isBooking ? courtSpanAt(ci, i, rSpan) : 1;
+                const blockEnd = court.slots[Math.min(i + rSpan - 1, court.slots.length - 1)].end;
+                const selKey = `${court.courtId}__${slot.start}`;
+                const isSelected = selected.some((s) => s.key === selKey);
                 const awaiting = slot.booking?.paymentStatus === "awaiting_verification";
                 const isFilteredOut = filter !== "all" && slot.state !== filter;
                 const statusClass = slot.booking ? `booking-status-${String(slot.booking.status || "reserved").toLowerCase().replace(/[^a-z0-9]+/g, "-")}` : "";
                 const paymentKebab = String(slot.booking?.paymentStatus || "unpaid").toLowerCase().replace(/[^a-z0-9]+/g, "-");
-                const classes = ["dispatch-tile", slot.state, statusClass, isSelected ? "selected" : "", isFilteredOut ? "is-filtered-out" : ""].filter(Boolean).join(" ");
+                const classes = ["dispatch-tile", slot.state, statusClass, isSelected ? "selected" : "", isFilteredOut ? "is-filtered-out" : "", rSpan * cSpan === 1 ? "single-slot-booking" : ""].filter(Boolean).join(" ");
                 const selectable = slot.state === "vacant" || slot.state === "blocked";
+                const gridStyle = { gridColumn: `${ci + 2} / span ${cSpan}`, gridRow: `${i + 2} / span ${rSpan}` } as const;
                 return (
                   <button
                     key={court.courtId}
                     className={classes}
-                    disabled={!selectable}
-                    onClick={() =>
-                      selectable &&
-                      toggleSlot({
-                        courtId: court.courtId,
-                        courtName: court.courtName,
-                        start: slot.start,
-                        end: slot.end,
-                        kind: slot.state === "blocked" ? "blocked" : "vacant",
-                        blockId: slot.block?.id,
-                      })
-                    }
+                    style={gridStyle}
+                    disabled={slot.state === "maintenance"}
+                    onClick={() => {
+                      if (isBooking && slot.booking) openBooking(slot.booking.id);
+                      else if (selectable) toggleSlot({ courtId: court.courtId, courtName: court.courtName, start: slot.start, end: slot.end, kind: slot.state === "blocked" ? "blocked" : "vacant", blockId: slot.block?.id });
+                    }}
                   >
                     {slot.state === "vacant" ? (
                       <>
@@ -241,12 +304,15 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                     ) : slot.state === "maintenance" ? (
                       <>
                         <span className="tile-open-line"><strong>Maintenance</strong></span>
-                        <span className="tile-open-time">{formatClock(slot.start)} - {formatClock(slot.end)}</span>
+                        <span className="tile-open-time">{formatClock(slot.start)} - {formatClock(blockEnd)}</span>
                       </>
                     ) : (
                       <>
                         <div className="tile-primary">{slot.booking?.customerName}</div>
-                        <div className="tile-booking-summary">{formatClock(slot.start)} - {formatClock(slot.end)}</div>
+                        <div className="tile-booking-summary">
+                          {cSpan > 1 ? `${court.courtName}–${courtsV[ci + cSpan - 1].courtName} · ` : ""}
+                          {formatClock(slot.start)} - {formatClock(blockEnd)}
+                        </div>
                         <div className="tile-financial-row">
                           <span className="tile-financial">
                             {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {slot.booking?.status}
@@ -258,10 +324,11 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                         <div className="dispatch-popover">
                           <strong>{slot.booking?.customerName}</strong>
                           <span>{slot.booking?.reference}</span>
+                          <span>{formatClock(slot.start)} - {formatClock(blockEnd)}</span>
                           <span>
-                            {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)}
+                            {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {slot.booking?.status}
                           </span>
-                          <span>{slot.booking?.status}</span>
+                          <span className="dim">Click to manage →</span>
                         </div>
                       </>
                     )}
@@ -323,6 +390,18 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
             setModalOpen(false);
             setSelected([]);
             loadDate(dateKey);
+          }}
+        />
+      )}
+
+      {opsBooking && (
+        <BookingOperationsModal
+          booking={opsBooking}
+          currency={currency}
+          onClose={() => setOpsBooking(null)}
+          onChanged={() => {
+            setOpsBooking(null);
+            refresh();
           }}
         />
       )}

@@ -404,21 +404,24 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
 .dispatch-skeleton, .dispatch-loading { display: flex; gap: 10px; align-items: center; justify-content: center; min-height: 180px; color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; }
 .dispatch-grid {
   display: grid; width: 100%;
-  grid-template-columns: 122px repeat(var(--dispatch-courts), minmax(184px, 1fr));
-  grid-template-rows: 52px repeat(var(--dispatch-slots), 124px);
+  /* Compact: all courts share the row width (minmax(0,1fr)) so 11 fit without
+     horizontal scroll; shorter rows so more time blocks are visible at once. */
+  grid-template-columns: 50px repeat(var(--dispatch-courts), minmax(0, 1fr));
+  grid-template-rows: 34px repeat(var(--dispatch-slots), 52px);
   gap: 1px; background: var(--line-grid);
 }
-.dispatch-time-head, .dispatch-court-head, .dispatch-time-cell { background: var(--bg-panel); font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-.dispatch-time-head, .dispatch-court-head { position: sticky; top: 0; z-index: 7; padding: 12px 10px; text-transform: uppercase; letter-spacing: 1px; }
+.dispatch-time-head, .dispatch-court-head, .dispatch-time-cell { background: var(--bg-panel); font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+.dispatch-time-head, .dispatch-court-head { position: sticky; top: 0; z-index: 7; padding: 5px 6px; text-transform: uppercase; letter-spacing: .5px; }
 .dispatch-time-head { left: 0; z-index: 9; display: flex; flex-direction: column; justify-content: center; }
-.dispatch-court-head { font-family: var(--font-display); color: var(--accent-cyan); font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dispatch-court-head span { display: block; margin-top: 3px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dispatch-time-cell { position: sticky; left: 0; z-index: 6; display: flex; align-items: center; justify-content: center; min-height: 124px; padding: 8px; font-size: 12px; color: var(--accent-cyan); box-shadow: 1px 0 0 var(--line-grid); }
-.dtc-range { white-space: nowrap; }
+.dispatch-court-head { font-family: var(--font-display); color: var(--accent-cyan); font-size: 12px; line-height: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dispatch-court-head span { display: block; margin-top: 1px; font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dispatch-time-cell { position: sticky; left: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; padding: 4px 2px; font-size: 9px; line-height: 11px; color: var(--accent-cyan); box-shadow: 1px 0 0 var(--line-grid); text-align: center; }
+.dtc-range { display: flex; flex-direction: column; align-items: center; white-space: nowrap; }
+.dtc-dash { display: none; }
 .dispatch-tile {
-  position: relative; min-height: 124px; height: 100%; width: 100%; border: 0; border-left: 4px solid transparent;
-  padding: 12px 14px; text-align: left; cursor: pointer; color: var(--text-primary); background: var(--bg-panel);
-  display: flex; flex-direction: column; gap: 6px;
+  position: relative; min-height: 52px; height: 100%; width: 100%; border: 0; border-left: 3px solid transparent;
+  padding: 4px 6px; text-align: left; cursor: pointer; color: var(--text-primary); background: var(--bg-panel);
+  display: flex; flex-direction: column; gap: 1px; overflow: hidden;
   transition: transform .12s ease, filter .12s ease, background .12s ease;
 }
 .dispatch-tile:hover { transform: translateY(-1px); filter: brightness(1.08); }
@@ -450,7 +453,7 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
 .dispatch-tile.is-filtered-out { opacity: .22; filter: grayscale(.6); }
 
 /* --- v3b tile content --- */
-.tile-primary { font-family: var(--font-display); font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; max-width: 100%; line-height: 18px; }
+.tile-primary { font-family: var(--font-display); font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; max-width: 100%; line-height: 14px; }
 .tile-secondary { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 15px; }
 .tile-booking-summary { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 13px; }
 .tile-financial-row { display: flex; align-items: center; gap: 4px; min-width: 0; margin-top: auto; }
@@ -460,7 +463,7 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
 .tile-payment-medal.payment-awaiting-verification, .tile-payment-medal.payment-partial { color: #171000; background: var(--payment-awaiting); }
 .tile-payment-medal.payment-paid { color: #062317; background: var(--payment-paid); }
 .tile-open-line { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
-.tile-open-line strong { font-family: var(--font-display); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-open-line strong { font-family: var(--font-display); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-open-line em { font-family: var(--font-mono); font-style: normal; font-size: 9px; color: var(--accent-cyan); white-space: nowrap; }
 .tile-open-date, .tile-open-time { font-family: var(--font-mono); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 12px; }
 .dispatch-tile.vacant .tile-open-line strong, .dispatch-tile.vacant .tile-open-line em, .dispatch-tile.vacant .tile-open-date, .dispatch-tile.vacant .tile-open-time { color: var(--open-slot-text); }
