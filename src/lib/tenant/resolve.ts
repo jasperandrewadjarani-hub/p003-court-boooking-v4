@@ -27,9 +27,20 @@ export async function resolveTenant() {
   // production hostnames never carry one.
   const hostOnly = hostname.split(":")[0];
 
+  // Select every tenant scalar EXCEPT logoUrl — resolveTenant runs on every
+  // request/server-action (incl. the 20s grid/bookings polls), and the logo is
+  // a ~500 KB inline data-URI. Pulling it here shipped it on every one of those.
+  // The two places that actually render the logo (customer header, admin shell)
+  // read it from branding settings, which they already fetch for CSS.
+  const tenantSelect = {
+    id: true, slug: true, name: true, status: true, timezone: true, currency: true,
+    locale: true, primaryColor: true, accentColor: true, senderName: true,
+    senderEmail: true, featureFlags: true, createdAt: true, updatedAt: true,
+  } as const;
+
   const domain = await prisma.tenantDomain.findFirst({
     where: { hostname: { equals: hostname === hostOnly ? hostname : hostname, mode: "insensitive" } },
-    include: { tenant: true },
+    select: { tenant: { select: tenantSelect } },
   });
 
   // Fall back to a port-stripped match so "dink-and-dunk.localhost:3000" and
@@ -39,7 +50,7 @@ export async function resolveTenant() {
     domain ??
     (await prisma.tenantDomain.findFirst({
       where: { hostname: { equals: hostOnly, mode: "insensitive" } },
-      include: { tenant: true },
+      select: { tenant: { select: tenantSelect } },
     }));
 
   if (!resolved || resolved.tenant.status !== "active") {

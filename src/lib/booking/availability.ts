@@ -84,7 +84,11 @@ export interface GridCourt {
   indoor: boolean;
   capacity: number;
   baseRateMinor: number | null;
-  imageUrl: string | null;
+  // Whether this court has a photo — the actual image is NOT shipped in the
+  // grid (it's ~200-260 KB per court as an inline data-URI, and the grid is
+  // polled every 20s). The photo is fetched on demand from
+  // /api/courts/[courtId]/photo only when a customer taps the header.
+  hasImage: boolean;
   headerColor: string | null;
   slots: GridSlot[];
 }
@@ -110,10 +114,20 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
     // moment anyone next loads this tenant's grid, no cron required.
     await sweepLapsedBookings(tx, tenantId, rules);
 
+    // Select the columns the grid actually needs, and crucially OMIT imageUrl —
+    // the photo is a ~200-260 KB inline data-URI per court and this grid is
+    // polled every 20s, so pulling the bytes here was the dominant DB egress
+    // cost. A separate tiny query below marks which courts have a photo.
     const courts = await tx.court.findMany({
       where: { tenantId, status: { not: "closed" } },
       orderBy: { sortOrder: "asc" },
+      select: { id: true, code: true, name: true, description: true, indoor: true, capacity: true, baseRateMinor: true, headerColor: true, status: true },
     });
+    const courtsWithPhoto = await tx.court.findMany({
+      where: { tenantId, imageUrl: { not: null } },
+      select: { id: true },
+    });
+    const photoIds = new Set(courtsWithPhoto.map((c) => c.id));
 
     const dayDate = new Date(dateKey + "T00:00:00.000Z");
     // local_date is a DATE column (no time component) — exact equality,
@@ -168,7 +182,7 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
         indoor: court.indoor,
         capacity: court.capacity,
         baseRateMinor: court.baseRateMinor,
-        imageUrl: court.imageUrl,
+        hasImage: photoIds.has(court.id),
         headerColor: court.headerColor,
         slots,
       };

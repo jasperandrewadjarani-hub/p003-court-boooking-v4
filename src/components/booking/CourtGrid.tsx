@@ -54,8 +54,8 @@ export function CourtGrid({
           <div
             className="head"
             key={c.id}
-            onClick={() => c.imageUrl && setImageCourt(c)}
-            title={c.imageUrl ? "Tap to view court photo" : undefined}
+            onClick={() => c.hasImage && setImageCourt(c)}
+            title={c.hasImage ? "Tap to view court photo" : undefined}
             style={c.headerColor ? { color: c.headerColor } : undefined}
           >
             <strong>{c.name}</strong>
@@ -113,8 +113,9 @@ export function CourtGrid({
                 {imageCourt.description}
               </p>
             )}
+            {/* Fetched on demand (not shipped in the grid) — see /api/courts/[courtId]/photo. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageCourt.imageUrl ?? undefined} alt={imageCourt.name} style={{ width: "100%", borderRadius: "var(--radius)", display: "block" }} />
+            <img src={`/api/courts/${imageCourt.id}/photo`} alt={imageCourt.name} style={{ width: "100%", borderRadius: "var(--radius)", display: "block" }} />
           </div>
         </div>
       )}

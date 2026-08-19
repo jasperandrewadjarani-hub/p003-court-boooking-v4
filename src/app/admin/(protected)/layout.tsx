@@ -24,9 +24,10 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
       <style dangerouslySetInnerHTML={{ __html: brandingToCss(branding) }} />
       <AdminThemeToggle />
       <div className="admin-sidebar">
-        {tenant.logoUrl && (
+        {branding.logoUrl && (
+          // From branding settings (already fetched for CSS) — resolveTenant no longer ships the logo.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={tenant.logoUrl} alt={tenant.name} className="admin-brand-logo" />
+          <img src={branding.logoUrl} alt={tenant.name} className="admin-brand-logo" />
         )}
         <div className="brand" style={{ fontSize: 20 }}>
           {tenant.name.toUpperCase()}

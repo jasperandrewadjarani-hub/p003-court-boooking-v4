@@ -36,7 +36,8 @@ export default async function Home() {
           name: tenant.name,
           slug: tenant.slug,
           currency: tenant.currency,
-          logoUrl: tenant.logoUrl,
+          logoUrl: branding.logoUrl, // from branding settings — resolveTenant no longer ships the logo
+
         }}
         initialGrid={grid}
         memberships={memberships}
