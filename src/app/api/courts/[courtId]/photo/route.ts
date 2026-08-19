@@ -13,6 +13,11 @@ import { resolveTenant } from "@/lib/tenant/resolve";
  */
 export async function GET(_request: Request, ctx: { params: Promise<{ courtId: string }> }) {
   const { courtId } = await ctx.params;
+  // Reject anything that isn't a UUID before it reaches Postgres (a malformed
+  // id would otherwise throw "invalid input syntax for uuid" -> 500).
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(courtId)) {
+    return new NextResponse("Not found", { status: 404 });
+  }
   const tenant = await resolveTenant();
 
   const court = await withTenant(tenant.id, (tx) =>
