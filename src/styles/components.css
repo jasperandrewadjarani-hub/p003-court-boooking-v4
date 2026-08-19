@@ -213,6 +213,28 @@ header.hud {
   50% { box-shadow: inset 0 0 0 2px var(--accent-optic), 0 0 16px rgba(198, 255, 61, 0.6); }
 }
 
+/* Post-booking spark — briefly highlights the slot(s) just booked (layered
+   over .booked's magenta look) once the success modal closes. Removed via
+   JS after ~5s (BookingPage's dismissToGrid), not a fixed animation count,
+   so it just cuts off cleanly whenever that timer fires. */
+.slot.just-booked { animation: slotSpark 0.9s ease-in-out infinite; }
+.slot.just-booked .slot-label { color: var(--status-confirmed); font-weight: 700; }
+@keyframes slotSpark {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--status-confirmed), 0 0 8px rgba(61, 255, 176, 0.35); }
+  50% { box-shadow: inset 0 0 0 3px var(--status-confirmed), 0 0 22px rgba(61, 255, 176, 0.85); }
+}
+
+/* "Booking Created" toast — fades/slides in top-center, auto-dismisses in
+   sync with the slot spark above. */
+.booking-toast {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-12px);
+  z-index: 70; background: var(--status-confirmed); color: var(--bg-void);
+  font-family: var(--font-display); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  font-size: 13px; padding: 10px 20px; border-radius: 999px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; white-space: nowrap;
+}
+.booking-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* -------------------------------- Cart bar -------------------------------*/
 .cart-bar {
   position: sticky; bottom: 0; z-index: 40; background: var(--bg-panel); border-top: 1px solid var(--accent-optic);

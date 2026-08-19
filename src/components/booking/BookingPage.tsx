@@ -123,8 +123,14 @@ export function BookingPage({
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
   const [preview, setPreview] = useState<{ totalMinor: number; discountMinor: number; discountError?: string }>({ totalMinor: 0, discountMinor: 0 });
   const [status, setStatus] = useState<{ kind: "idle" | "error"; message?: string }>({ kind: "idle" });
-  const [completedBooking, setCompletedBooking] = useState<{ bookingGroupId: string; reference: string; totalMinor: number } | null>(null);
+  const [completedBooking, setCompletedBooking] = useState<{ bookingGroupId: string; reference: string; totalMinor: number; justBookedKeys: string[] } | null>(null);
   const [showReceiptReminder, setShowReceiptReminder] = useState(false);
+  // Post-booking "spark" — briefly highlights the just-booked slots in the
+  // grid and shows a "Booking Created" toast once the success modal(s) close
+  // and the grid becomes visible again (client asked for this — v3b has no
+  // equivalent, it just does a plain silent refresh).
+  const [highlightKeys, setHighlightKeys] = useState<Set<string>>(new Set());
+  const [bookingToast, setBookingToast] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [accountModal, setAccountModal] = useState<{ mode: "login" | "register"; devCode?: string } | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -233,6 +239,7 @@ export function BookingPage({
   // Step 2: called by AccountModal once registration/login succeeds — the
   // session is now established, so the booking transaction can trust it.
   function submitBooking() {
+    const bookedKeys = cart.map((c) => c.key); // captured before the cart is cleared below
     startTransition(async () => {
       const res = await createBookingAction({
         dateKey,
@@ -245,7 +252,7 @@ export function BookingPage({
       if (res.ok) {
         setStatus({ kind: "idle" }); // clear any stale error from an earlier failed attempt
         setDiscountCode(""); // don't leave a resolved/rejected code sitting in the box for the next booking
-        setCompletedBooking({ bookingGroupId: res.result.bookingGroupId, reference: res.result.reference, totalMinor: res.result.totalMinor });
+        setCompletedBooking({ bookingGroupId: res.result.bookingGroupId, reference: res.result.reference, totalMinor: res.result.totalMinor, justBookedKeys: bookedKeys });
         setCart([]);
         const fresh = await fetchGridAction(dateKey);
         setGrid(fresh);
@@ -286,7 +293,25 @@ export function BookingPage({
     if (!receiptUploaded) {
       setShowReceiptReminder(true);
     } else {
-      setCompletedBooking(null);
+      dismissToGrid();
+    }
+  }
+
+  // Closes whichever post-booking modal is open and reveals the grid — the
+  // freshly-booked slots are already rendered as Booked underneath (the grid
+  // was refetched right after the booking succeeded), so this is the moment
+  // to spark them and show the "Booking Created" toast, for ~5 seconds.
+  function dismissToGrid() {
+    const keys = completedBooking?.justBookedKeys ?? [];
+    setCompletedBooking(null);
+    setShowReceiptReminder(false);
+    if (keys.length) {
+      setHighlightKeys(new Set(keys));
+      setBookingToast("Booking Created");
+      setTimeout(() => {
+        setHighlightKeys(new Set());
+        setBookingToast(null);
+      }, 5000);
     }
   }
 
@@ -320,6 +345,10 @@ export function BookingPage({
       <button className="theme-toggle" onClick={toggleTheme}>
         {theme === "dark" ? "☾ Light Mode" : "☀ Dark Mode"}
       </button>
+
+      <div className={`booking-toast ${bookingToast ? "visible" : ""}`} role="status">
+        ✓ {bookingToast}
+      </div>
 
       <div className="ticker">
         <div className="ticker__track">{occupancyText}</div>
@@ -383,7 +412,7 @@ export function BookingPage({
                 Tap multiple open slots to add them to your booking, across any court. Updates live. No refresh needed.
               </p>
               <div key={dateKey}>
-                <CourtGrid grid={grid} selectedKeys={selectedKeys} onToggleSlot={onToggleSlot} isPending={isPending} />
+                <CourtGrid grid={grid} selectedKeys={selectedKeys} highlightKeys={highlightKeys} onToggleSlot={onToggleSlot} isPending={isPending} />
               </div>
             </div>
 
@@ -540,10 +569,7 @@ export function BookingPage({
         <ReceiptReminderModal
           reservationHoldMinutes={reservationHoldMinutes}
           onReturnToUpload={() => setShowReceiptReminder(false)}
-          onProceedAnyway={() => {
-            setShowReceiptReminder(false);
-            setCompletedBooking(null);
-          }}
+          onProceedAnyway={dismissToGrid}
         />
       )}
     </main>

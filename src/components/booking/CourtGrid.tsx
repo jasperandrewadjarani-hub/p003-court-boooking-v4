@@ -24,11 +24,14 @@ function formatTime(hhmm: string): string {
 export function CourtGrid({
   grid,
   selectedKeys,
+  highlightKeys,
   onToggleSlot,
   isPending,
 }: {
   grid: AvailabilityGrid;
   selectedKeys: Set<string>;
+  /** Slots to briefly spark after a booking just succeeded — see BookingPage's dismissToGrid(). */
+  highlightKeys?: Set<string>;
   onToggleSlot: (courtId: string, courtName: string, start: string, end: string) => void;
   isPending: boolean;
 }) {
@@ -54,8 +57,9 @@ export function CourtGrid({
             {grid.courts.map((court) => {
               const slot = court.slots[i];
               const isSelected = selectedKeys.has(slotKey(court.id, slot.start));
+              const isJustBooked = !!highlightKeys?.has(slotKey(court.id, slot.start));
               const clickable = slot.status === "available";
-              const classes = ["slot", slot.status, isSelected ? "selected" : ""].filter(Boolean).join(" ");
+              const classes = ["slot", slot.status, isSelected ? "selected" : "", isJustBooked ? "just-booked" : ""].filter(Boolean).join(" ");
               const label = isSelected
                 ? "Selected"
                 : slot.status === "available"
