@@ -418,7 +418,21 @@ export function BookingPage({
 
       {modalOpen && cart.length > 0 && (
         <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
-          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); continueToAccount(); }}>
+          <form
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => { e.preventDefault(); continueToAccount(); }}
+            onKeyDown={(e) => {
+              // Native "Enter submits the form" isn't reliable across every
+              // input combination/browser — v3b doesn't depend on it either
+              // (JS.html wires an explicit keydown listener per field). Match
+              // that: Enter on any text field here submits directly.
+              if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+                e.preventDefault();
+                continueToAccount();
+              }
+            }}
+          >
             <span className="close" onClick={() => setModalOpen(false)}>
               [ ESC ]
             </span>

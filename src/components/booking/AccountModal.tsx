@@ -88,7 +88,17 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
   if (resetMode === "requested") {
     return (
       <div className="modal-backdrop" onClick={onClose}>
-        <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); completeReset(); }}>
+        <form
+          className="modal"
+          onClick={(e) => e.stopPropagation()}
+          onSubmit={(e) => { e.preventDefault(); completeReset(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+              e.preventDefault();
+              completeReset();
+            }
+          }}
+        >
           <span className="close" onClick={onClose}>[ ESC ]</span>
           <h3>Reset Password</h3>
           {resetDevCode && (
@@ -113,7 +123,17 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form
+        className="modal"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => { e.preventDefault(); submit(); }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+      >
         <span className="close" onClick={onClose}>[ ESC ]</span>
         <h3>{mode === "register" ? "Create Your Account" : "Customer Sign In"}</h3>
         <p className="dim mono" style={{ fontSize: 13 }}>

@@ -90,7 +90,15 @@ export function MyBookingsPanel({ currency }: { currency: string }) {
     return (
       <div className="panel">
         <div className="panel__title">Look Up My Bookings</div>
-        <form onSubmit={(e) => { e.preventDefault(); submitLogin(); }}>
+        <form
+          onSubmit={(e) => { e.preventDefault(); submitLogin(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+              e.preventDefault();
+              submitLogin();
+            }
+          }}
+        >
           <label>Email Address</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
           <label>Password</label>
