@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Rajdhani, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { resolveTenant } from "@/lib/tenant/resolve";
 import "./globals.css";
 
 // Ported from v2's CSS.html font stack (Rajdhani / IBM Plex Sans / IBM Plex
@@ -23,10 +24,23 @@ const ibmPlexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
-export const metadata: Metadata = {
-  title: "P003 Court Booking Platform",
-  description: "v4 — Next.js + Postgres multi-tenant court booking platform (Phase 0)",
-};
+// Tab title follows the resolved tenant (per hostname), so each facility's URL
+// shows its own business name instead of a generic app name. Falls back to a
+// neutral title for an unrecognised host (resolveTenant throws there).
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const tenant = await resolveTenant();
+    return {
+      title: tenant.name,
+      description: `Online court booking for ${tenant.name}.`,
+    };
+  } catch {
+    return {
+      title: "Court Booking",
+      description: "Multi-tenant court booking platform.",
+    };
+  }
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
