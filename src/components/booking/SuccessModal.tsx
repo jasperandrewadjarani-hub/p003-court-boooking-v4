@@ -23,6 +23,24 @@ export function SuccessModal({ bookingGroupId, reference, totalMinor, currency, 
   const [status, setStatus] = useState<"idle" | "uploading" | "uploaded" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState(false);
+  const qrImages = paymentSettings.qrImages;
+  const [qrIndex, setQrIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+
+  function goQr(delta: number) {
+    setQrIndex((i) => (i + delta + qrImages.length) % qrImages.length);
+  }
+  function downloadQr() {
+    const uri = qrImages[qrIndex];
+    if (!uri) return;
+    const ext = uri.startsWith("data:image/png") ? "png" : uri.startsWith("data:image/webp") ? "webp" : "jpg";
+    const a = document.createElement("a");
+    a.href = uri;
+    a.download = `payment-qr-${qrIndex + 1}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
 
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -77,7 +95,43 @@ export function SuccessModal({ bookingGroupId, reference, totalMinor, currency, 
               Payment details haven&apos;t been configured yet — ask staff how to pay.
             </p>
           )}
-          {paymentSettings.qrImageUrl && <img className="qr" src={paymentSettings.qrImageUrl} alt="Payment QR code" />}
+          {qrImages.length > 0 && (
+            <div className="qr-carousel">
+              <div
+                className="qr-carousel-frame"
+                onTouchStart={(e) => setTouchStartX(e.touches[0].clientX)}
+                onTouchEnd={(e) => {
+                  if (touchStartX === null) return;
+                  const delta = e.changedTouches[0].clientX - touchStartX;
+                  if (Math.abs(delta) > 40) goQr(delta < 0 ? 1 : -1);
+                  setTouchStartX(null);
+                }}
+              >
+                {qrImages.length > 1 && (
+                  <button type="button" className="qr-carousel-arrow left" onClick={() => goQr(-1)} aria-label="Previous QR">
+                    ‹
+                  </button>
+                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="qr" src={qrImages[qrIndex]} alt={`Payment QR ${qrIndex + 1} of ${qrImages.length}`} />
+                {qrImages.length > 1 && (
+                  <button type="button" className="qr-carousel-arrow right" onClick={() => goQr(1)} aria-label="Next QR">
+                    ›
+                  </button>
+                )}
+              </div>
+              {qrImages.length > 1 && (
+                <div className="qr-carousel-dots">
+                  {qrImages.map((_, i) => (
+                    <button key={i} type="button" className={`qr-carousel-dot ${i === qrIndex ? "active" : ""}`} onClick={() => setQrIndex(i)} aria-label={`Show QR ${i + 1}`} />
+                  ))}
+                </div>
+              )}
+              <button type="button" className="btn secondary" style={{ marginTop: 8 }} onClick={downloadQr}>
+                ⬇ Download QR
+              </button>
+            </div>
+          )}
           {paymentSettings.paymentInstructions && (
             <p className="mono dim" style={{ fontSize: 12 }}>
               {paymentSettings.paymentInstructions}

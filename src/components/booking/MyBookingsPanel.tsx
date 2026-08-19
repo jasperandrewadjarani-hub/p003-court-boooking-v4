@@ -79,6 +79,10 @@ export function MyBookingsPanel({ currency }: { currency: string }) {
   }
 
   function cancel(bookingGroupId: string) {
+    const confirmed = window.confirm(
+      "Cancel booking. Refund for any payment made is subject to management discretion — please contact the court managers directly through their social media channels to arrange a refund, if applicable.\n\nProceed with cancellation?"
+    );
+    if (!confirmed) return;
     startTransition(async () => {
       const res = await cancelMyBookingAction(bookingGroupId);
       if (res.ok) refresh();

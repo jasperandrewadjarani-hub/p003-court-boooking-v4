@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { listDiscountsAction, saveDiscountAction } from "@/app/admin/actions";
+import { listDiscountsAction, saveDiscountAction, deleteDiscountAction } from "@/app/admin/actions";
 
 interface DiscountRow {
   id: string;
@@ -60,6 +60,13 @@ export function DiscountsManager() {
     } else {
       setError(res.error);
     }
+  }
+
+  async function remove(id: string, code: string) {
+    if (!window.confirm(`Delete discount code "${code}"? This cannot be undone.`)) return;
+    const res = await deleteDiscountAction(id);
+    if (res.ok) refresh();
+    else setError(res.error);
   }
 
   return (
@@ -130,6 +137,9 @@ export function DiscountsManager() {
                 <td className="action-cell">
                   <button className="btn secondary" onClick={() => edit(d)}>
                     Edit
+                  </button>
+                  <button className="btn danger" onClick={() => remove(d.id, d.code)}>
+                    Delete
                   </button>
                 </td>
               </tr>

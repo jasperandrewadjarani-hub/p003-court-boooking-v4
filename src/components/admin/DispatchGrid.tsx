@@ -10,6 +10,10 @@ import type { AdminBookingGroup } from "@/lib/admin/bookings";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
 import { labelize } from "@/lib/format";
 
+// Live update every 20s (matches v3b's dispatch-grid poll cadence) so a
+// newly received booking shows up without a manual refresh.
+const POLL_MS = 20_000;
+
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   const hour12 = h % 12 || 12;
@@ -91,6 +95,28 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
   function refresh() {
     startTransition(async () => setGrid(await fetchDispatchGridAction(dateKey)));
   }
+
+  // Quiet background refresh — a new booking (customer or another staff
+  // member's frontdesk entry) shows up without a manual reload.
+  useEffect(() => {
+    const id = setInterval(refresh, POLL_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateKey]);
+
+  // ESC closes whichever is open: the booking-ops modal (that modal handles
+  // its own ESC internally), else the frontdesk-create modal, else clears
+  // the current tile selection.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (opsBooking) return; // BookingOperationsModal has its own ESC handler
+      if (modalOpen) setModalOpen(false);
+      else if (selected.length) setSelected([]);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [opsBooking, modalOpen, selected.length]);
 
   // Selecting a tile of a different kind than the current selection resets it —
   // you can't mix vacant (book/block) and blocked (unblock) in one action.
@@ -191,17 +217,27 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
   return (
     <div className="panel dispatch-panel">
       <div className="dispatch-header">
-        <div>
-          <div className="panel__title">Court Dispatch Grid</div>
-          <p className="dim mono" style={{ fontSize: 11, margin: 0 }}>
-            Live court occupancy, payment status, and availability by slot.
-          </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button
+            type="button"
+            className={`toggle-switch ${cropCustomerHours ? "on" : ""}`}
+            role="switch"
+            aria-checked={cropCustomerHours}
+            aria-label="Customer hours"
+            onClick={() => setCropCustomerHours((v) => !v)}
+          >
+            <span className="toggle-switch-knob" />
+          </button>
+          <div>
+            <div className="panel__title" style={{ margin: 0 }}>
+              Court Dispatch Grid <span className="mono dim" style={{ fontSize: 10, textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>· Customer hours</span>
+            </div>
+            <p className="dim mono" style={{ fontSize: 11, margin: 0 }}>
+              Live court occupancy, payment status, and availability by slot.
+            </p>
+          </div>
         </div>
         <div className="dispatch-controls">
-          <label className="mono dim" style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 11, whiteSpace: "nowrap" }}>
-            <input type="checkbox" style={{ width: "auto" }} checked={cropCustomerHours} onChange={(e) => setCropCustomerHours(e.target.checked)} />
-            Customer hours
-          </label>
           {(["all", "paid", "unpaid", "vacant"] as Filter[]).map((f) => (
             <button key={f} className={`btn secondary dispatch-filter ${filter === f ? "active" : ""}`} data-filter={f} onClick={() => setFilter(f)}>
               {f === "all" ? "All" : f === "vacant" ? "Vacant Only" : f[0].toUpperCase() + f.slice(1)}
@@ -319,7 +355,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                             {currency} {((slot.booking?.totalMinor ?? 0) / 100).toFixed(2)} · {labelize(slot.booking?.status)}
                           </span>
                           <span className={`tile-payment-medal payment-${paymentKebab}`}>
-                            {awaiting ? "Awaiting" : labelize(slot.booking?.paymentStatus)}
+                            {awaiting ? "Awaiting Verification" : labelize(slot.booking?.paymentStatus)}
                           </span>
                         </div>
                         <div className="dispatch-popover">
@@ -404,6 +440,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
             setOpsBooking(null);
             refresh();
           }}
+          onSilentRefresh={refresh}
         />
       )}
     </div>

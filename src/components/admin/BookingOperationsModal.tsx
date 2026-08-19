@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusAction, cancelBookingGroupAction } from "@/app/admin/actions";
+import { useEffect, useState } from "react";
+import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusAction, cancelBookingGroupAction, getBookingGroupAction } from "@/app/admin/actions";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
 import { labelize } from "@/lib/format";
 
 const PAYMENT_METHODS = ["cash", "gcash", "maya", "credit_card", "bank_transfer"] as const;
-const STATUSES = ["reserved", "confirmed", "checked_in", "playing", "finished", "cancelled", "lapsed", "no_show"] as const;
+// v3b's status vocabulary is wider (checked_in/playing/finished/no_show) for
+// possible future front-desk flows, but nothing in this deployment ever
+// writes those — client asked to trim the admin-facing UI to just the four
+// states actually used. The underlying schema/enum is untouched.
+const STATUSES = ["reserved", "confirmed", "cancelled", "lapsed"] as const;
 
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
@@ -16,19 +20,62 @@ function formatTime(hhmm: string): string {
 
 /** Matches v2's Edit Booking modal — contact/notes edit, payment ledger,
  * status transitions, cancel. Court/date/time are intentionally not
- * editable here (cancel and rebook instead). */
-export function BookingOperationsModal({ booking, currency, onClose, onChanged }: { booking: AdminBookingGroup; currency: string; onClose: () => void; onChanged: () => void }) {
+ * editable here (cancel and rebook instead).
+ *
+ * onChanged: booking is done being managed — close the modal AND refresh the
+ * parent's list (Save Details, Cancel Booking).
+ * onSilentRefresh: something changed but the admin is probably still working
+ * in this modal — refresh the parent's background list WITHOUT closing
+ * (Record Payment, Update Status; client asked these to stay open with an
+ * inline confirmation instead of exiting the form). */
+export function BookingOperationsModal({
+  booking: initialBooking,
+  currency,
+  onClose,
+  onChanged,
+  onSilentRefresh,
+}: {
+  booking: AdminBookingGroup;
+  currency: string;
+  onClose: () => void;
+  onChanged: () => void;
+  onSilentRefresh?: () => void;
+}) {
+  const [booking, setBooking] = useState(initialBooking);
   const [firstName, lastName] = booking.customerName.split(" ", 2);
   const [form, setForm] = useState({ firstName: firstName ?? "", lastName: lastName ?? "", phone: booking.phone ?? "", notes: booking.notes ?? "" });
-  const [payAmount, setPayAmount] = useState("");
+  const balanceMinorInitial = initialBooking.totalMinor - initialBooking.amountPaidMinor;
+  // Defaults to the outstanding balance — the client specifically asked for
+  // this instead of an empty box the admin has to compute/type themselves.
+  const [payAmount, setPayAmount] = useState(balanceMinorInitial > 0 ? (balanceMinorInitial / 100).toFixed(2) : "");
   const [payMethod, setPayMethod] = useState<(typeof PAYMENT_METHODS)[number]>("cash");
-  const [status, setStatus] = useState<(typeof STATUSES)[number]>(booking.status as (typeof STATUSES)[number]);
+  const [status, setStatus] = useState<(typeof STATUSES)[number]>(
+    (STATUSES as readonly string[]).includes(booking.status) ? (booking.status as (typeof STATUSES)[number]) : "reserved"
+  );
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  // Re-pulls this one booking's fresh data after a payment/status change so
+  // the Amount Totals / Status dropdown reflect it without closing the modal.
+  async function refetchInPlace() {
+    const fresh = await getBookingGroupAction(booking.id);
+    if (fresh) setBooking(fresh);
+    onSilentRefresh?.();
+  }
 
   async function saveDetails() {
     setPending(true);
     setError(null);
+    setNotice(null);
     const res = await updateBookingGroupAction(booking.id, { firstName: form.firstName, lastName: form.lastName, mobileNumber: form.phone, notes: form.notes });
     setPending(false);
     if (res.ok) onChanged();
@@ -43,11 +90,12 @@ export function BookingOperationsModal({ booking, currency, onClose, onChanged }
     }
     setPending(true);
     setError(null);
+    setNotice(null);
     const res = await recordPaymentAction(booking.id, payMethod, amountMinor);
     setPending(false);
     if (res.ok) {
-      setPayAmount("");
-      onChanged();
+      setNotice("✓ Payment recorded.");
+      await refetchInPlace();
     } else {
       setError(res.error);
     }
@@ -56,13 +104,19 @@ export function BookingOperationsModal({ booking, currency, onClose, onChanged }
   async function saveStatus() {
     setPending(true);
     setError(null);
+    setNotice(null);
     const res = await updateBookingStatusAction(booking.id, status);
     setPending(false);
-    if (res.ok) onChanged();
-    else setError(res.error);
+    if (res.ok) {
+      setNotice("✓ Booking status updated.");
+      await refetchInPlace();
+    } else {
+      setError(res.error);
+    }
   }
 
   async function cancel() {
+    if (!window.confirm("Cancel this booking? This cannot be undone.")) return;
     setPending(true);
     setError(null);
     const res = await cancelBookingGroupAction(booking.id);
@@ -147,14 +201,16 @@ export function BookingOperationsModal({ booking, currency, onClose, onChanged }
           </div>
         </div>
 
-        <div className="settings-section-title">Payment Receipt</div>
-        {booking.receiptId ? (
-          <a className="btn secondary" href={`/api/receipts/${booking.receiptId}`} target="_blank" rel="noopener noreferrer">
-            View Receipt
-          </a>
-        ) : (
-          <span className="dim mono" style={{ fontSize: 11 }}>No receipt uploaded</span>
-        )}
+        <div className="settings-section-title booking-receipt-row">
+          <span>Payment Receipt</span>
+          {booking.receiptId ? (
+            <a className="btn secondary" href={`/api/receipts/${booking.receiptId}`} target="_blank" rel="noopener noreferrer">
+              View Receipt
+            </a>
+          ) : (
+            <span className="dim mono" style={{ fontSize: 11, textTransform: "none", letterSpacing: 0 }}>No receipt uploaded</span>
+          )}
+        </div>
 
         <div className="settings-section-title">Record New Payment</div>
         <div className="inline-form">
@@ -190,6 +246,7 @@ export function BookingOperationsModal({ booking, currency, onClose, onChanged }
           Update Status
         </button>
 
+        {notice && <div className="receipt-state uploaded" style={{ marginTop: 10 }}>{notice}</div>}
         {error && <div className="field-warning">{error}</div>}
 
         <button className="btn danger block" style={{ marginTop: 10 }} onClick={cancel} disabled={pending}>

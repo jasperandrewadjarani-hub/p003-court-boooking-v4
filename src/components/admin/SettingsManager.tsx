@@ -193,8 +193,10 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
               <label>Logo Preview</label>
               {brandForm.logoUrl ? (
                 <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={brandForm.logoUrl} alt="logo" style={{ height: 48 }} />
+                  <div className="settings-image-preview">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={brandForm.logoUrl} alt="logo" />
+                  </div>
                   <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setBrandForm({ ...brandForm, logoUrl: "" })}>
                     Remove logo
                   </button>
@@ -277,25 +279,39 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
             <label>Payment Instructions</label>
             <input value={paymentsForm.paymentInstructions ?? ""} onChange={(e) => setPaymentsForm({ ...paymentsForm, paymentInstructions: e.target.value })} />
           </div>
-          <div className="settings-field">
-            <label>GCash QR Image</label>
-            <input type="file" accept="image/*" onChange={pickImage((d) => setPaymentsForm({ ...paymentsForm, qrImageUrl: d }))} />
-            <input style={{ marginTop: 6 }} value={(paymentsForm.qrImageUrl ?? "").startsWith("data:") ? "" : (paymentsForm.qrImageUrl ?? "")} onChange={(e) => setPaymentsForm({ ...paymentsForm, qrImageUrl: e.target.value })} placeholder="…or paste an image URL" />
-          </div>
-          <div className="settings-field">
-            <label>QR Preview</label>
-            {paymentsForm.qrImageUrl ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={paymentsForm.qrImageUrl} alt="GCash QR" style={{ height: 96, background: "#fff", padding: 4, borderRadius: 6 }} />
-                <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setPaymentsForm({ ...paymentsForm, qrImageUrl: null })}>
-                  Remove QR
-                </button>
-              </>
-            ) : (
-              <span className="dim mono" style={{ fontSize: 11 }}>No QR uploaded</span>
-            )}
-          </div>
+        </div>
+
+        <div className="settings-field" style={{ marginTop: 4 }}>
+          <label>Payment QR Images (up to 4 — customers select/swipe between them at checkout)</label>
+        </div>
+        <div className="settings-grid">
+          {Array.from({ length: 4 }, (_, i) => {
+            const img = paymentsForm.qrImages[i];
+            function setSlot(value: string | null) {
+              const next = [...paymentsForm.qrImages];
+              if (value) next[i] = value;
+              else next.splice(i, 1); // remove — shifts later slots down rather than leaving a gap
+              setPaymentsForm({ ...paymentsForm, qrImages: next });
+            }
+            return (
+              <div className="settings-field" key={i}>
+                <label>QR #{i + 1}</label>
+                {img ? (
+                  <>
+                    <div className="settings-image-preview">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img} alt={`Payment QR ${i + 1}`} style={{ background: "#fff" }} />
+                    </div>
+                    <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setSlot(null)}>
+                      Remove
+                    </button>
+                  </>
+                ) : (
+                  <input type="file" accept="image/*" onChange={pickImage((d) => setSlot(d))} disabled={i > paymentsForm.qrImages.length} />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div className="settings-section-title">Reports &amp; Notifications</div>

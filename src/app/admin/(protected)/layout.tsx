@@ -4,6 +4,7 @@ import { resolveTenant } from "@/lib/tenant/resolve";
 import { getBrandingSettings, brandingToCss } from "@/lib/admin/settings";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { AdminThemeToggle } from "@/components/admin/AdminThemeToggle";
+import { LogoutButton } from "@/components/admin/LogoutButton";
 
 export default async function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
   const staff = await getCurrentStaff();
@@ -31,12 +32,8 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
           {tenant.name.toUpperCase()}
         </div>
         <AdminNav />
-        <div className="admin-nav-item admin-nav-logout" onClick={undefined}>
-          <form action={doLogout}>
-            <button type="submit" style={{ all: "unset", cursor: "pointer" }}>
-              Log Out
-            </button>
-          </form>
+        <div className="admin-nav-item admin-nav-logout">
+          <LogoutButton onLogout={doLogout} />
         </div>
         <div className="admin-nav-item dim admin-nav-account">{staff.name}</div>
         <div className="admin-nav-item dim admin-nav-credit">

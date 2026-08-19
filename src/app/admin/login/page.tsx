@@ -14,14 +14,13 @@ export default function AdminLoginPage() {
   async function submit() {
     setError(null);
     setPending(true);
-    try {
-      await loginStaff(email, password);
+    const result = await loginStaff(email, password);
+    setPending(false);
+    if (result.ok) {
       router.push("/admin");
       router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setPending(false);
+    } else {
+      setError(result.error);
     }
   }
 

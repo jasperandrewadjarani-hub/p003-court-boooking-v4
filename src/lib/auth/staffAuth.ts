@@ -7,29 +7,39 @@ import { issueSession, verifySession, clearSession } from "@/lib/auth/session";
 
 const STAFF_SESSION_HOURS = 6; // matches v2's 6-hour frontdesk shift
 
+// Same {ok,error} pattern as customerAuth.ts (2026-08-19) — a raw throw here
+// crossed the Server Action boundary as a digest-masked "React error #441"
+// instead of "Incorrect email or password", exactly the bug already found
+// and fixed on the customer side. This function was missed in that pass.
+type AuthOutcome<T> = ({ ok: true } & T) | { ok: false; error: string };
+
 /** Staff login — password only, no OTP branch (v2's admin login is
  * password-only against Staff/User, unlike the customer OTP flow). */
-export async function loginStaff(email: string, password: string) {
-  const tenant = await resolveTenant();
-  const normalized = email.trim().toLowerCase();
+export async function loginStaff(email: string, password: string): Promise<AuthOutcome<{ email: string; name: string; role: string }>> {
+  try {
+    const tenant = await resolveTenant();
+    const normalized = email.trim().toLowerCase();
 
-  const rows = await withTenant(tenant.id, (tx) =>
-    tx.$queryRaw<{ id: string; password_hash: string | null }[]>`
-      SELECT id, password_hash FROM users
-      WHERE tenant_id = ${tenant.id}::uuid AND kind = 'staff' AND lower(email) = ${normalized} LIMIT 1
-    `
-  );
-  if (!rows.length || !rows[0].password_hash) {
-    throw new Error("Incorrect email or password.");
+    const rows = await withTenant(tenant.id, (tx) =>
+      tx.$queryRaw<{ id: string; password_hash: string | null }[]>`
+        SELECT id, password_hash FROM users
+        WHERE tenant_id = ${tenant.id}::uuid AND kind = 'staff' AND lower(email) = ${normalized} LIMIT 1
+      `
+    );
+    if (!rows.length || !rows[0].password_hash) {
+      throw new Error("Incorrect email or password.");
+    }
+    const valid = await verifyPassword(rows[0].password_hash, password);
+    if (!valid) throw new Error("Incorrect email or password.");
+
+    const staff = await withTenant(tenant.id, (tx) => tx.staff.findUnique({ where: { userId: rows[0].id } }));
+    if (!staff || !staff.active) throw new Error("This staff account is inactive.");
+
+    await issueSession(tenant.id, rows[0].id, "staff", STAFF_SESSION_HOURS);
+    return { ok: true, email: normalized, name: staff.name, role: staff.role };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Something went wrong." };
   }
-  const valid = await verifyPassword(rows[0].password_hash, password);
-  if (!valid) throw new Error("Incorrect email or password.");
-
-  const staff = await withTenant(tenant.id, (tx) => tx.staff.findUnique({ where: { userId: rows[0].id } }));
-  if (!staff || !staff.active) throw new Error("This staff account is inactive.");
-
-  await issueSession(tenant.id, rows[0].id, "staff", STAFF_SESSION_HOURS);
-  return { email: normalized, name: staff.name, role: staff.role };
 }
 
 export async function logoutStaff() {

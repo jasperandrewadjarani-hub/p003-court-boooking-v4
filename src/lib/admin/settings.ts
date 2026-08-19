@@ -124,8 +124,13 @@ function assertInlineImageOk(field: string, value: string | null | undefined) {
   }
 }
 
+const MAX_QR_IMAGES = 4;
+
 export async function savePaymentSettings(tenantId: string, input: Partial<PaymentSettings>) {
-  assertInlineImageOk("QR", input.qrImageUrl);
+  if (input.qrImages) {
+    if (input.qrImages.length > MAX_QR_IMAGES) throw new Error(`You can upload at most ${MAX_QR_IMAGES} QR images.`);
+    input.qrImages.forEach((img, i) => assertInlineImageOk(`QR #${i + 1}`, img));
+  }
   return saveSettingKey(tenantId, "payment_settings", input);
 }
 

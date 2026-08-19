@@ -1,29 +1,73 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { listBookingsAction } from "@/app/admin/actions";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
-import type { AdminBookingGroup } from "@/lib/admin/bookings";
+import type { AdminBookingGroup, PagedBookings } from "@/lib/admin/bookings";
 import { labelize } from "@/lib/format";
 
-const STATUS_OPTIONS = ["", "reserved", "confirmed", "checked_in", "playing", "finished", "cancelled", "lapsed", "no_show"];
+const PAGE_SIZE = 20;
+// Live update every 20s (v3b's own dispatch-grid poll cadence) so a newly
+// received booking shows up without a manual refresh.
+const POLL_MS = 20_000;
 
-export function BookingsTable({ initialBookings, currency }: { initialBookings: AdminBookingGroup[]; currency: string }) {
-  const [bookings, setBookings] = useState(initialBookings);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+// v3b's status vocabulary is wider (checked_in/playing/finished/no_show) for
+// possible future front-desk flows, but nothing in this deployment ever
+// writes those — client asked to trim the admin-facing UI to just the four
+// states that are actually used, not touch the underlying schema/enum.
+const STATUS_OPTIONS = ["", "reserved", "confirmed", "cancelled", "lapsed"];
+
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function daysAheadKey(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function BookingsTable({ initialResult, currency }: { initialResult: PagedBookings; currency: string }) {
+  const [result, setResult] = useState(initialResult);
+  const [dateFrom, setDateFrom] = useState(todayKey()); // default range: today -> +7 days
+  const [dateTo, setDateTo] = useState(daysAheadKey(7));
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminBookingGroup | null>(null);
+  const [rangeError, setRangeError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function refresh() {
+  function fetchPage(targetPage: number) {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setRangeError('"From" date must be on or before the "To" date.');
+      return;
+    }
+    setRangeError(null);
     startTransition(async () => {
-      const result = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, search: search || undefined });
-      setBookings(result);
+      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
+      setResult(r);
+      setPage(targetPage);
     });
   }
+
+  function applyFilters() {
+    fetchPage(1); // any filter change starts back at page 1
+  }
+
+  // Quiet background refresh — re-fetches the current page/filters without
+  // disturbing scroll position or an open modal (a booking being managed
+  // isn't affected; BookingOperationsModal holds its own copy).
+  useEffect(() => {
+    const id = setInterval(() => fetchPage(page), POLL_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, status, search, page]);
+
+  const bookings = result.items;
+  const totalPages = Math.max(1, Math.ceil(result.totalCount / result.pageSize));
+  const rangeStart = result.totalCount === 0 ? 0 : (result.page - 1) * result.pageSize + 1;
+  const rangeEnd = Math.min(result.page * result.pageSize, result.totalCount);
 
   return (
     <div className="admin-view">
@@ -54,10 +98,11 @@ export function BookingsTable({ initialBookings, currency }: { initialBookings: 
             <label>Search (name / phone / ID)</label>
             <input type="text" className="input-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <button className="btn secondary" onClick={refresh} disabled={isPending}>
+          <button className="btn secondary" onClick={applyFilters} disabled={isPending}>
             Filter
           </button>
         </div>
+        {rangeError && <div className="field-warning">{rangeError}</div>}
         <p className="dim mono" style={{ fontSize: 11 }}>
           Click a booking row to expand its courts/time slots. A booking made across multiple courts shares one Booking ID.
         </p>
@@ -124,6 +169,23 @@ export function BookingsTable({ initialBookings, currency }: { initialBookings: 
             ))}
           </tbody>
         </table>
+
+        <div className="admin-pagination">
+          <span className="dim mono" style={{ fontSize: 11 }}>
+            {result.totalCount === 0 ? "No bookings" : `Showing ${rangeStart}–${rangeEnd} of ${result.totalCount.toLocaleString()} bookings`}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn secondary" onClick={() => fetchPage(page - 1)} disabled={isPending || page <= 1}>
+              ← Prev
+            </button>
+            <span className="dim mono" style={{ fontSize: 11, alignSelf: "center" }}>
+              Page {page} of {totalPages}
+            </span>
+            <button className="btn secondary" onClick={() => fetchPage(page + 1)} disabled={isPending || page >= totalPages}>
+              Next →
+            </button>
+          </div>
+        </div>
       </div>
 
       {editing && (
@@ -133,8 +195,9 @@ export function BookingsTable({ initialBookings, currency }: { initialBookings: 
           onClose={() => setEditing(null)}
           onChanged={() => {
             setEditing(null);
-            refresh();
+            fetchPage(page);
           }}
+          onSilentRefresh={() => fetchPage(page)}
         />
       )}
     </div>

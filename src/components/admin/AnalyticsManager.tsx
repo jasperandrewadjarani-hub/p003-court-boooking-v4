@@ -17,9 +17,10 @@ function daysAgoKey(days: number): string {
 const CHART_COLORS = ["#C6FF3D", "#2EE6FF", "#FF2E7E", "#FFCA3A", "#3DFFB0", "#7C9A2E"];
 
 export function AnalyticsManager({ initialData, currency }: { initialData: AnalyticsData; currency: string }) {
-  const [from, setFrom] = useState(daysAgoKey(30));
+  const [from, setFrom] = useState(daysAgoKey(30)); // default range: last 30 days
   const [to, setTo] = useState(todayKey());
   const [data, setData] = useState(initialData);
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAnalyticsAction(from, to).then(setData);
@@ -29,6 +30,11 @@ export function AnalyticsManager({ initialData, currency }: { initialData: Analy
   const [activeOnly, setActiveOnly] = useState(false);
 
   async function apply() {
+    if (from > to) {
+      setRangeError('"From" date must be on or before the "To" date.');
+      return;
+    }
+    setRangeError(null);
     setData(await fetchAnalyticsAction(from, to));
   }
 
@@ -70,6 +76,7 @@ export function AnalyticsManager({ initialData, currency }: { initialData: Analy
         <p className="dim mono" style={{ fontSize: 11 }}>
           Export includes: summary, bookings summary, detailed log, and payments — one workbook, four tabs.
         </p>
+        {rangeError && <div className="field-warning">{rangeError}</div>}
       </div>
 
       <div className="stat-cards">

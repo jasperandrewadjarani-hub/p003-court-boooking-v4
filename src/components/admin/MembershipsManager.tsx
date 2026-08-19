@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { listMembershipsAdminAction, saveMembershipAction } from "@/app/admin/actions";
+import { listMembershipsAdminAction, saveMembershipAction, deleteMembershipAction } from "@/app/admin/actions";
 import type { Membership } from "@/generated/prisma/client";
 
 const EMPTY = { name: "", monthlyFeeMinor: "0", discountPercent: "0", priorityBooking: false, freeHoursMonth: "0", active: true };
@@ -47,6 +47,13 @@ export function MembershipsManager({ initialMemberships }: { initialMemberships:
     } else {
       setError(res.error);
     }
+  }
+
+  async function remove(id: string, name: string) {
+    if (!window.confirm(`Delete membership "${name}"? This cannot be undone.`)) return;
+    const res = await deleteMembershipAction(id);
+    if (res.ok) refresh();
+    else setError(res.error);
   }
 
   return (
@@ -124,6 +131,9 @@ export function MembershipsManager({ initialMemberships }: { initialMemberships:
                 <td className="action-cell">
                   <button className="btn secondary" onClick={() => edit(m)}>
                     Edit
+                  </button>
+                  <button className="btn danger" onClick={() => remove(m.id, m.name)}>
+                    Delete
                   </button>
                 </td>
               </tr>

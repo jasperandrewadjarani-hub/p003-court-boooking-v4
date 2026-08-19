@@ -85,6 +85,13 @@ export async function saveMembership(tenantId: string, input: MembershipInput) {
   );
 }
 
+// Membership isn't referenced by a foreign key anywhere (Customer/BookingGroup
+// store membershipType as a loose string snapshot, not an FK), so a real
+// delete is always safe — no orphaned-reference risk.
+export async function deleteMembership(tenantId: string, id: string) {
+  return withTenant(tenantId, (tx) => tx.membership.delete({ where: { id } }));
+}
+
 // --------------------------------- Holidays -------------------------------------
 
 export interface HolidayInput {
@@ -149,4 +156,11 @@ export async function saveDiscount(tenantId: string, input: DiscountInput) {
       },
     })
   );
+}
+
+// BookingGroup.discountId is onDelete:SetNull — old bookings that used this
+// code keep their historical discountAmountMinor, they just lose the live
+// link back to the (now-deleted) Discount row. Safe.
+export async function deleteDiscount(tenantId: string, id: string) {
+  return withTenant(tenantId, (tx) => tx.discount.delete({ where: { id } }));
 }

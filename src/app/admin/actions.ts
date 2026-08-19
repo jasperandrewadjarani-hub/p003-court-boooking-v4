@@ -17,6 +17,7 @@ import {
   type PriceMatrixInput,
   listMembershipsAdmin,
   saveMembership,
+  deleteMembership,
   type MembershipInput,
   listHolidays,
   saveHoliday,
@@ -24,6 +25,7 @@ import {
   type HolidayInput,
   listDiscounts,
   saveDiscount,
+  deleteDiscount,
   type DiscountInput,
 } from "@/lib/admin/masterData";
 import { blockSlots, unblockSlots, type BlockSlotItem } from "@/lib/admin/blockedSlots";
@@ -236,6 +238,17 @@ export async function saveMembershipAction(input: MembershipInput) {
   }
 }
 
+export async function deleteMembershipAction(id: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await deleteMembership(tenant.id, id);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
 // --------------------------------- Holidays ---------------------------------------
 
 export async function listHolidaysAction() {
@@ -279,6 +292,17 @@ export async function saveDiscountAction(input: DiscountInput) {
   await requireStaff();
   try {
     await saveDiscount(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function deleteDiscountAction(id: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await deleteDiscount(tenant.id, id);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };

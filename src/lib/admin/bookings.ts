@@ -8,6 +8,15 @@ export interface BookingFilters {
   dateTo?: string;
   status?: string;
   search?: string;
+  page?: number; // 1-based
+  pageSize?: number;
+}
+
+export interface PagedBookings {
+  items: AdminBookingGroup[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface AdminBookingItem {
@@ -35,10 +44,14 @@ export interface AdminBookingGroup {
 }
 
 /** Matches v2's adminListBookings — date range, status, and a name/phone/
- * reference search, capped at 300 grouped results (use date filters to go
- * further back). */
-export async function listBookings(tenantId: string, filters: BookingFilters): Promise<AdminBookingGroup[]> {
+ * reference search, paged (default 20/page) so the full 3,000+-row table
+ * doesn't get silently capped/truncated — was a flat take:300 with no way
+ * to see anything beyond that (client-reported: "there are 3.6k+ bookings
+ * ... but not all appear"). */
+export async function listBookings(tenantId: string, filters: BookingFilters): Promise<PagedBookings> {
   const rules = await getBookingRules(tenantId);
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 20));
 
   return withTenant(tenantId, async (tx) => {
     await sweepLapsedBookings(tx, tenantId, rules);
@@ -60,18 +73,22 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
       ];
     }
 
-    const groups = await tx.bookingGroup.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 300,
-      include: {
-        customer: { include: { user: true } },
-        bookings: { include: { court: true }, orderBy: { startsAt: "asc" } },
-        receipts: { select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 },
-      },
-    });
+    const [totalCount, groups] = await Promise.all([
+      tx.bookingGroup.count({ where }),
+      tx.bookingGroup.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          customer: { include: { user: true } },
+          bookings: { include: { court: true }, orderBy: { startsAt: "asc" } },
+          receipts: { select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 },
+        },
+      }),
+    ]);
 
-    return groups.map(mapAdminGroup);
+    return { items: groups.map(mapAdminGroup), totalCount, page, pageSize };
   });
 }
 
