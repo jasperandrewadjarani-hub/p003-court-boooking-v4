@@ -45,7 +45,11 @@ export function CourtGrid({
         {grid.courts[0]?.slots.map((_, i) => (
           <Fragment key={i}>
             <div className="time-label">
-              {formatTime(grid.courts[0].slots[i].start)}-{formatTime(grid.courts[0].slots[i].end)}
+              <span className="tl-range">
+                <span className="tl-start">{formatTime(grid.courts[0].slots[i].start)}</span>
+                <span className="tl-dash">-</span>
+                <span className="tl-end">{formatTime(grid.courts[0].slots[i].end)}</span>
+              </span>
             </div>
             {grid.courts.map((court) => {
               const slot = court.slots[i];

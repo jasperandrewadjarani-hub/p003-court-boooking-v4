@@ -204,7 +204,7 @@ export function BookingPage({
   function continueToAccount() {
     if (!cart.length) return;
     if (!form.firstName || !form.lastName || !form.email || !form.phone) {
-      setAuthError("Please input required information — first name, last name, mobile number, and email are all required.");
+      setAuthError("Please input required information. First name, last name, mobile number, and email are all required.");
       return;
     }
     // A discount code the customer typed but never resolved successfully

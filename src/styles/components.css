@@ -177,8 +177,9 @@ header.hud {
 .court-grid .time-label {
   position: sticky; left: 0; z-index: 6;
   background: var(--bg-panel); color: var(--text-dim); font-family: var(--font-mono);
-  font-size: 10px; display: flex; align-items: center; justify-content: center; white-space: nowrap;
+  font-size: 10px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px;
 }
+.tl-range { white-space: nowrap; }
 .slot {
   background: var(--bg-panel);
   min-height: 38px;
@@ -676,6 +677,11 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   .court-grid .head strong { font-size: 12px; }
   .court-grid .head span { font-size: 8px; margin-top: 2px; }
   .court-grid .time-label { font-size: 8px; }
+  /* Stack the time range onto two lines so the narrow mobile column doesn't
+     clip a one-line "8:00am-9:00am" string (was cutting off leading digits). */
+  .tl-range { display: flex; flex-direction: column; align-items: center; line-height: 1.15; gap: 1px; white-space: normal; }
+  .tl-dash { display: none; }
+  .tl-end::before { content: '– '; }
   .slot { min-height: 34px; }
   .slot-label { font-size: 8px; }
   .cart-bar { padding: 10px 12px; margin: 0 -10px; }
