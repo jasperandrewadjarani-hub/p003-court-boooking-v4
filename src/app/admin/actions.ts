@@ -10,6 +10,7 @@ import {
   listCourts,
   saveCourt,
   deleteCourt,
+  reorderCourts,
   type CourtInput,
   listPriceMatrix,
   savePriceMatrixRow,
@@ -193,6 +194,17 @@ export async function deleteCourtAction(courtId: string) {
   await requireStaff();
   try {
     await deleteCourt(tenant.id, courtId);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function reorderCourtsAction(orderedCourtIds: string[]) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await reorderCourts(tenant.id, orderedCourtIds);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };

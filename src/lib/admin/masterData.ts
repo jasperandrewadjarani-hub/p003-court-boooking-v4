@@ -50,6 +50,19 @@ export async function deleteCourt(tenantId: string, courtId: string) {
   return withTenant(tenantId, (tx) => tx.court.delete({ where: { id: courtId } }));
 }
 
+/** Renumbers every court's sortOrder to match the given ID order — both the
+ * customer grid and the Courts tab already read this same field, so fixing
+ * it here fixes display order everywhere at once. Full renumber (not a
+ * pairwise swap) so it's also self-healing against courts that were never
+ * explicitly ordered before (all sharing sortOrder 0, whose relative order
+ * is otherwise arbitrary/physical-row-order, which is what caused Court 1
+ * to jump to the back after an unrelated edit). */
+export async function reorderCourts(tenantId: string, orderedCourtIds: string[]) {
+  return withTenant(tenantId, (tx) =>
+    Promise.all(orderedCourtIds.map((id, index) => tx.court.update({ where: { id }, data: { sortOrder: index } })))
+  );
+}
+
 // ------------------------------- Price Matrix ---------------------------------
 
 export interface PriceMatrixInput {

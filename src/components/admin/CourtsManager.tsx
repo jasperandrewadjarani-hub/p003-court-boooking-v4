@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { listCourtsAction, saveCourtAction, deleteCourtAction } from "@/app/admin/actions";
+import { listCourtsAction, saveCourtAction, deleteCourtAction, reorderCourtsAction } from "@/app/admin/actions";
 import type { Court } from "@/generated/prisma/client";
 
 const EMPTY: any = { code: "", name: "", indoor: true, status: "available", surface: "", lighting: "", capacity: 4, airConditioned: false, baseRateMinor: "", lightingFeeMinor: "", description: "", imageUrl: "", headerColor: "" };
@@ -85,6 +85,21 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
   async function remove(courtId: string) {
     await deleteCourtAction(courtId);
     refresh();
+  }
+
+  function move(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= courts.length) return;
+    const reordered = [...courts];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setCourts(reordered); // optimistic — the grid/tab both read this same order
+    startTransition(async () => {
+      const res = await reorderCourtsAction(reordered.map((c) => c.id));
+      if (!res.ok) {
+        setError(res.error);
+        refresh(); // roll back to the server's actual order
+      }
+    });
   }
 
   return (
@@ -202,6 +217,7 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
         <table className="admin-table">
           <thead>
             <tr>
+              <th>Order</th>
               <th>ID</th>
               <th>Name</th>
               <th>Description</th>
@@ -214,8 +230,18 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
             </tr>
           </thead>
           <tbody>
-            {courts.map((c) => (
+            {courts.map((c, i) => (
               <tr key={c.id}>
+                <td>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button className="btn secondary" style={{ padding: "2px 8px" }} onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move ${c.name} up`}>
+                      ▲
+                    </button>
+                    <button className="btn secondary" style={{ padding: "2px 8px" }} onClick={() => move(i, 1)} disabled={i === courts.length - 1} aria-label={`Move ${c.name} down`}>
+                      ▼
+                    </button>
+                  </div>
+                </td>
                 <td>{c.code}</td>
                 <td>{c.name}</td>
                 <td>{c.description}</td>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { AvailabilityGrid, GridCourt } from "@/lib/booking/availability";
 
 export function slotKey(courtId: string, start: string): string {
@@ -36,6 +36,15 @@ export function CourtGrid({
   isPending: boolean;
 }) {
   const [imageCourt, setImageCourt] = useState<GridCourt | null>(null);
+
+  useEffect(() => {
+    if (!imageCourt) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setImageCourt(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [imageCourt]);
 
   return (
     <div className="grid-wrap" aria-busy={isPending}>
