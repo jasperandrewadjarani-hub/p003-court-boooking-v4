@@ -216,16 +216,16 @@ export function BookingPage({
     }
     setAuthError(null);
     startTransition(async () => {
-      try {
-        const result = await beginCustomerBookingAuth(form.email);
-        setModalOpen(false);
-        if (result.mode === "login") {
-          setAccountModal({ mode: "login" });
-        } else {
-          setAccountModal({ mode: "register", devCode: "devCode" in result ? result.devCode : undefined });
-        }
-      } catch (err) {
-        setAuthError(err instanceof Error ? err.message : "Something went wrong.");
+      const result = await beginCustomerBookingAuth(form.email);
+      if (!result.ok) {
+        setAuthError(result.error);
+        return;
+      }
+      setModalOpen(false);
+      if (result.mode === "login") {
+        setAccountModal({ mode: "login" });
+      } else {
+        setAccountModal({ mode: "register", devCode: "devCode" in result ? result.devCode : undefined });
       }
     });
   }

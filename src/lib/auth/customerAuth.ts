@@ -11,29 +11,49 @@ import { renderTemplate } from "@/lib/email/resend";
 
 const CUSTOMER_SESSION_HOURS = 6;
 
+// Next.js sanitizes a thrown Error's .message across the Server Action/RSC
+// boundary in production by default (surfaces only a generic digest-bearing
+// "error #441" to the client, discovered 2026-08-19 testing "No registered
+// account..."/"Incorrect email or password" always showing as gibberish).
+// Every OTHER action in this codebase already avoids that by catching and
+// returning a plain {ok,error} object instead of throwing — these customer-
+// auth functions were the one place still relying on raw throws. Converted
+// to match; callers check `.ok` instead of try/catch.
+type AuthOutcome<T> = ({ ok: true } & T) | { ok: false; error: string };
+
+function authError(err: unknown): { ok: false; error: string } {
+  return { ok: false, error: err instanceof Error ? err.message : "Something went wrong." };
+}
+
 /** Direct port of v2's beginCustomerBookingAuth: an email with a verified,
  * password-protected account is a login; anything else starts registration
  * (sends an OTP). NOTE — no login-attempt rate limiting yet (v2 had a
  * 10-attempts/15-min cache counter); deferred to Phase F alongside the
  * Upstash-backed hardening the master plan already calls for there. */
-export async function beginCustomerBookingAuth(email: string) {
-  const tenant = await resolveTenant();
-  const normalized = normalizeEmail(email);
+export async function beginCustomerBookingAuth(
+  email: string
+): Promise<AuthOutcome<{ mode: "login"; email: string } | ({ mode: "register"; email: string } & Awaited<ReturnType<typeof deliverOtp>>)>> {
+  try {
+    const tenant = await resolveTenant();
+    const normalized = normalizeEmail(email);
 
-  const existing = await withTenant(tenant.id, (tx) =>
-    tx.$queryRaw<{ id: string; password_hash: string | null; email_verified_at: Date | null }[]>`
-      SELECT id, password_hash, email_verified_at FROM users
-      WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} LIMIT 1
-    `
-  );
+    const existing = await withTenant(tenant.id, (tx) =>
+      tx.$queryRaw<{ id: string; password_hash: string | null; email_verified_at: Date | null }[]>`
+        SELECT id, password_hash, email_verified_at FROM users
+        WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} LIMIT 1
+      `
+    );
 
-  if (existing.length && existing[0].password_hash && existing[0].email_verified_at) {
-    return { mode: "login" as const, email: normalized };
+    if (existing.length && existing[0].password_hash && existing[0].email_verified_at) {
+      return { ok: true, mode: "login" as const, email: normalized };
+    }
+
+    const result = await sendOtpChallenge(tenant.id, normalized, "register");
+    const delivery = await deliverOtp(tenant.id, normalized, "register", result);
+    return { ok: true, mode: "register" as const, email: normalized, ...delivery };
+  } catch (err) {
+    return authError(err);
   }
-
-  const result = await sendOtpChallenge(tenant.id, normalized, "register");
-  const delivery = await deliverOtp(tenant.id, normalized, "register", result);
-  return { mode: "register" as const, email: normalized, ...delivery };
 }
 
 async function deliverOtp(
@@ -81,100 +101,117 @@ export async function registerCustomerAccount(input: {
   firstName: string;
   lastName: string;
   phone: string;
-}) {
-  const tenant = await resolveTenant();
-  const normalized = normalizeEmail(input.email);
-  validatePassword(input.password);
-  await verifyOtpChallenge(tenant.id, normalized, "register", input.code);
+}): Promise<AuthOutcome<{ email: string; expiresInHours: number }>> {
+  try {
+    const tenant = await resolveTenant();
+    const normalized = normalizeEmail(input.email);
+    validatePassword(input.password);
+    await verifyOtpChallenge(tenant.id, normalized, "register", input.code);
 
-  const passwordHash = await hashPassword(input.password);
+    const passwordHash = await hashPassword(input.password);
 
-  const customer = await withTenant(tenant.id, async (tx) => {
-    const existingUser = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM users WHERE tenant_id = ${tenant.id}::uuid AND lower(email) = ${normalized} LIMIT 1
-    `;
+    const customer = await withTenant(tenant.id, async (tx) => {
+      const existingUser = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM users WHERE tenant_id = ${tenant.id}::uuid AND lower(email) = ${normalized} LIMIT 1
+      `;
 
-    let userId: string;
-    if (existingUser.length) {
-      userId = existingUser[0].id;
-      await tx.user.update({
-        where: { id: userId },
-        data: { passwordHash, passwordAlgo: "argon2id", emailVerifiedAt: new Date() },
+      let userId: string;
+      if (existingUser.length) {
+        userId = existingUser[0].id;
+        await tx.user.update({
+          where: { id: userId },
+          data: { passwordHash, passwordAlgo: "argon2id", emailVerifiedAt: new Date() },
+        });
+      } else {
+        const user = await tx.user.create({
+          data: { tenantId: tenant.id, kind: "customer", email: normalized, passwordHash, passwordAlgo: "argon2id", emailVerifiedAt: new Date() },
+        });
+        userId = user.id;
+      }
+
+      const existingCustomer = await tx.customer.findUnique({ where: { userId } });
+      if (existingCustomer) {
+        return tx.customer.update({
+          where: { userId },
+          data: { firstName: input.firstName, lastName: input.lastName, mobileNumber: input.phone },
+        });
+      }
+      return tx.customer.create({
+        data: { tenantId: tenant.id, userId, firstName: input.firstName, lastName: input.lastName, mobileNumber: input.phone },
       });
-    } else {
-      const user = await tx.user.create({
-        data: { tenantId: tenant.id, kind: "customer", email: normalized, passwordHash, passwordAlgo: "argon2id", emailVerifiedAt: new Date() },
-      });
-      userId = user.id;
-    }
-
-    const existingCustomer = await tx.customer.findUnique({ where: { userId } });
-    if (existingCustomer) {
-      return tx.customer.update({
-        where: { userId },
-        data: { firstName: input.firstName, lastName: input.lastName, mobileNumber: input.phone },
-      });
-    }
-    return tx.customer.create({
-      data: { tenantId: tenant.id, userId, firstName: input.firstName, lastName: input.lastName, mobileNumber: input.phone },
     });
-  });
 
-  await issueSession(tenant.id, customer.userId, "customer", CUSTOMER_SESSION_HOURS);
-  return { email: normalized, expiresInHours: CUSTOMER_SESSION_HOURS };
-}
-
-export async function loginCustomer(email: string, password: string) {
-  const tenant = await resolveTenant();
-  const normalized = normalizeEmail(email);
-
-  const rows = await withTenant(tenant.id, (tx) =>
-    tx.$queryRaw<{ id: string; password_hash: string | null }[]>`
-      SELECT id, password_hash FROM users
-      WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} LIMIT 1
-    `
-  );
-  if (!rows.length || !rows[0].password_hash) {
-    throw new Error("No registered account was found for this email. Start a booking to register.");
+    await issueSession(tenant.id, customer.userId, "customer", CUSTOMER_SESSION_HOURS);
+    return { ok: true, email: normalized, expiresInHours: CUSTOMER_SESSION_HOURS };
+  } catch (err) {
+    return authError(err);
   }
-  const valid = await verifyPassword(rows[0].password_hash, password);
-  if (!valid) throw new Error("Incorrect email or password.");
-
-  await issueSession(tenant.id, rows[0].id, "customer", CUSTOMER_SESSION_HOURS);
-  return { email: normalized, expiresInHours: CUSTOMER_SESSION_HOURS };
 }
 
-export async function requestPasswordReset(email: string) {
-  const tenant = await resolveTenant();
-  const normalized = normalizeEmail(email);
-  const rows = await withTenant(tenant.id, (tx) =>
-    tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM users WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} AND password_hash IS NOT NULL LIMIT 1
-    `
-  );
-  if (!rows.length) throw new Error("No registered account was found for this email.");
-  const result = await sendOtpChallenge(tenant.id, normalized, "reset");
-  return await deliverOtp(tenant.id, normalized, "reset", result);
+export async function loginCustomer(email: string, password: string): Promise<AuthOutcome<{ email: string; expiresInHours: number }>> {
+  try {
+    const tenant = await resolveTenant();
+    const normalized = normalizeEmail(email);
+
+    const rows = await withTenant(tenant.id, (tx) =>
+      tx.$queryRaw<{ id: string; password_hash: string | null }[]>`
+        SELECT id, password_hash FROM users
+        WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} LIMIT 1
+      `
+    );
+    if (!rows.length || !rows[0].password_hash) {
+      throw new Error("No registered account was found for this email. Start a booking to register.");
+    }
+    const valid = await verifyPassword(rows[0].password_hash, password);
+    if (!valid) throw new Error("Incorrect email or password.");
+
+    await issueSession(tenant.id, rows[0].id, "customer", CUSTOMER_SESSION_HOURS);
+    return { ok: true, email: normalized, expiresInHours: CUSTOMER_SESSION_HOURS };
+  } catch (err) {
+    return authError(err);
+  }
 }
 
-export async function resetCustomerPassword(email: string, code: string, password: string) {
-  const tenant = await resolveTenant();
-  const normalized = normalizeEmail(email);
-  validatePassword(password);
-  await verifyOtpChallenge(tenant.id, normalized, "reset", code);
+export async function requestPasswordReset(email: string): Promise<AuthOutcome<Awaited<ReturnType<typeof deliverOtp>>>> {
+  try {
+    const tenant = await resolveTenant();
+    const normalized = normalizeEmail(email);
+    const rows = await withTenant(tenant.id, (tx) =>
+      tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM users WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} AND password_hash IS NOT NULL LIMIT 1
+      `
+    );
+    if (!rows.length) throw new Error("No registered account was found for this email.");
+    const result = await sendOtpChallenge(tenant.id, normalized, "reset");
+    const delivery = await deliverOtp(tenant.id, normalized, "reset", result);
+    return { ok: true, ...delivery };
+  } catch (err) {
+    return authError(err);
+  }
+}
 
-  const passwordHash = await hashPassword(password);
-  const rows = await withTenant(tenant.id, async (tx) => {
-    const existing = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM users WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} LIMIT 1
-    `;
-    if (!existing.length) throw new Error("No registered account was found for this email.");
-    await tx.user.update({ where: { id: existing[0].id }, data: { passwordHash, passwordAlgo: "argon2id", emailVerifiedAt: new Date() } });
-    return existing;
-  });
+export async function resetCustomerPassword(email: string, code: string, password: string): Promise<AuthOutcome<{ email: string; expiresInHours: number }>> {
+  try {
+    const tenant = await resolveTenant();
+    const normalized = normalizeEmail(email);
+    validatePassword(password);
+    await verifyOtpChallenge(tenant.id, normalized, "reset", code);
 
-  await issueSession(tenant.id, rows[0].id, "customer", CUSTOMER_SESSION_HOURS);
-  return { email: normalized, expiresInHours: CUSTOMER_SESSION_HOURS };
+    const passwordHash = await hashPassword(password);
+    const rows = await withTenant(tenant.id, async (tx) => {
+      const existing = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM users WHERE tenant_id = ${tenant.id}::uuid AND kind = 'customer' AND lower(email) = ${normalized} LIMIT 1
+      `;
+      if (!existing.length) throw new Error("No registered account was found for this email.");
+      await tx.user.update({ where: { id: existing[0].id }, data: { passwordHash, passwordAlgo: "argon2id", emailVerifiedAt: new Date() } });
+      return existing;
+    });
+
+    await issueSession(tenant.id, rows[0].id, "customer", CUSTOMER_SESSION_HOURS);
+    return { ok: true, email: normalized, expiresInHours: CUSTOMER_SESSION_HOURS };
+  } catch (err) {
+    return authError(err);
+  }
 }
 
 export async function logoutCustomer() {

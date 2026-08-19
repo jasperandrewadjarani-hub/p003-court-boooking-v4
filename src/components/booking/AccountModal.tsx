@@ -40,32 +40,26 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
       }
     }
     setPending(true);
-    try {
-      if (mode === "register") {
-        await registerCustomerAccount({ email, code: otp, password, firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone });
-      } else {
-        await loginCustomer(email, password);
-      }
-      onAuthenticated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setPending(false);
-    }
+    const result =
+      mode === "register"
+        ? await registerCustomerAccount({ email, code: otp, password, firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone })
+        : await loginCustomer(email, password);
+    setPending(false);
+    if (result.ok) onAuthenticated();
+    else setError(result.error);
   }
 
   async function beginReset() {
     setError(null);
     setPending(true);
-    try {
-      const res = await requestPasswordReset(email);
-      setResetDevCode("devCode" in res ? res.devCode : undefined);
-      setResetMode("requested");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setPending(false);
+    const res = await requestPasswordReset(email);
+    setPending(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
     }
+    setResetDevCode("devCode" in res ? res.devCode : undefined);
+    setResetMode("requested");
   }
 
   async function completeReset() {
@@ -75,14 +69,10 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
       return;
     }
     setPending(true);
-    try {
-      await resetCustomerPassword(email, resetCode, resetPassword);
-      onAuthenticated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setPending(false);
-    }
+    const result = await resetCustomerPassword(email, resetCode, resetPassword);
+    setPending(false);
+    if (result.ok) onAuthenticated();
+    else setError(result.error);
   }
 
   if (resetMode === "requested") {

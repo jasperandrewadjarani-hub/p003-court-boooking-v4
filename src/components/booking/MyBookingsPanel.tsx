@@ -69,12 +69,12 @@ export function MyBookingsPanel({ currency }: { currency: string }) {
       return;
     }
     startTransition(async () => {
-      try {
-        await loginCustomer(email, password);
-        refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong.");
+      const result = await loginCustomer(email, password);
+      if (!result.ok) {
+        setError(result.error);
+        return;
       }
+      refresh();
     });
   }
 
