@@ -185,6 +185,25 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
           </div>
           <div className="settings-grid" style={{ marginTop: 12 }}>
             <div className="settings-field">
+              <label>Court Label Header Color (customer + admin grids)</label>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="color"
+                  style={{ width: 40, padding: 2 }}
+                  value={/^#[0-9A-Fa-f]{6}$/.test(brandForm.courtHeaderColor) ? brandForm.courtHeaderColor : "#C6FF3D"}
+                  onChange={(e) => setBrandForm({ ...brandForm, courtHeaderColor: e.target.value.toUpperCase() })}
+                />
+                <input value={brandForm.courtHeaderColor} onChange={(e) => setBrandForm({ ...brandForm, courtHeaderColor: e.target.value.toUpperCase() })} placeholder="Default (green / cyan)" />
+              </div>
+              {brandForm.courtHeaderColor && (
+                <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setBrandForm({ ...brandForm, courtHeaderColor: "" })}>
+                  Use default colors
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="settings-grid" style={{ marginTop: 12 }}>
+            <div className="settings-field">
               <label>Business Logo</label>
               <input type="file" accept="image/*" onChange={pickImage((d) => setBrandForm({ ...brandForm, logoUrl: d }))} />
               <input style={{ marginTop: 6 }} value={brandForm.logoUrl.startsWith("data:") ? "" : brandForm.logoUrl} onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })} placeholder="…or paste an image URL" />

@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { listCourtsAction, saveCourtAction, deleteCourtAction } from "@/app/admin/actions";
 import type { Court } from "@/generated/prisma/client";
 
-const EMPTY: any = { code: "", name: "", indoor: true, status: "available", surface: "", lighting: "", capacity: 4, airConditioned: false, baseRateMinor: "", lightingFeeMinor: "", description: "" };
+const EMPTY: any = { code: "", name: "", indoor: true, status: "available", surface: "", lighting: "", capacity: 4, airConditioned: false, baseRateMinor: "", lightingFeeMinor: "", description: "", imageUrl: "" };
+const MAX_UPLOAD_BYTES = 1_400_000;
 
 export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
   const [courts, setCourts] = useState(initialCourts);
@@ -29,7 +30,26 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
       baseRateMinor: court.baseRateMinor !== null ? court.baseRateMinor / 100 : "",
       lightingFeeMinor: court.lightingFeeMinor !== null ? court.lightingFeeMinor / 100 : "",
       description: court.description ?? "",
+      imageUrl: court.imageUrl ?? "",
     });
+  }
+
+  function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Court photo must be an image file.");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB) — please use one under 1.4MB.`);
+      return;
+    }
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = () => setForm((f: any) => ({ ...f, imageUrl: String(reader.result) }));
+    reader.readAsDataURL(file);
   }
 
   async function save() {
@@ -50,6 +70,7 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
       baseRateMinor: form.baseRateMinor !== "" ? Math.round(Number(form.baseRateMinor) * 100) : undefined,
       lightingFeeMinor: form.lightingFeeMinor !== "" ? Math.round(Number(form.lightingFeeMinor) * 100) : undefined,
       description: form.description || undefined,
+      imageUrl: form.imageUrl || null,
     });
     if (res.ok) {
       setForm(EMPTY);
@@ -128,6 +149,28 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
           <div className="court-description-field">
             <label>Description</label>
             <input placeholder="e.g. Silica, Building 1" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </div>
+        </div>
+        <div className="settings-grid" style={{ marginTop: 12 }}>
+          <div className="settings-field">
+            <label>Court Photo (shown to customers)</label>
+            <input type="file" accept="image/*" onChange={pickImage} />
+          </div>
+          <div className="settings-field">
+            <label>Photo Preview</label>
+            {form.imageUrl ? (
+              <>
+                <div className="settings-image-preview">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={form.imageUrl} alt="Court preview" />
+                </div>
+                <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setForm({ ...form, imageUrl: "" })}>
+                  Remove photo
+                </button>
+              </>
+            ) : (
+              <span className="dim mono" style={{ fontSize: 11 }}>No photo uploaded</span>
+            )}
           </div>
         </div>
         {error && <div className="field-warning">{error}</div>}

@@ -16,13 +16,21 @@ export interface CourtInput {
   baseRateMinor?: number;
   lightingFeeMinor?: number;
   description?: string;
+  imageUrl?: string | null;
 }
+
+// Same cap as the logo/QR uploads in settings.ts — kept local to this file
+// since court images aren't part of the "branding" settings blob.
+const MAX_INLINE_IMAGE_CHARS = 2_000_000;
 
 export async function listCourts(tenantId: string) {
   return withTenant(tenantId, (tx) => tx.court.findMany({ where: { tenantId }, orderBy: { sortOrder: "asc" } }));
 }
 
 export async function saveCourt(tenantId: string, input: CourtInput) {
+  if (input.imageUrl && input.imageUrl.startsWith("data:") && input.imageUrl.length > MAX_INLINE_IMAGE_CHARS) {
+    throw new Error("Court image is too large — please use an image under ~1.4MB.");
+  }
   return withTenant(tenantId, (tx) =>
     tx.court.upsert({
       where: { tenantId_code: { tenantId, code: input.code } },

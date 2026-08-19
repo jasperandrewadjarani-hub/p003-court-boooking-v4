@@ -171,6 +171,11 @@ export interface BrandingSettings {
   lightOpenSlotFont: string;
   lightSelectedSlotFont: string;
   logoUrl: string;
+  // Optional — empty string means "use each grid's own default accent
+  // color" (customer green / admin cyan, unchanged from before this field
+  // existed). Set to override the court-header text color on BOTH the
+  // customer and admin court grids uniformly.
+  courtHeaderColor: string;
 }
 
 export const DEFAULT_BRANDING: BrandingSettings = {
@@ -205,6 +210,7 @@ export const DEFAULT_BRANDING: BrandingSettings = {
   lightOpenSlotFont: "#5C8A00",
   lightSelectedSlotFont: "#0E1A12",
   logoUrl: "",
+  courtHeaderColor: "",
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -216,6 +222,7 @@ export async function getBrandingSettings(tenantId: string) {
 export async function saveBrandingSettings(tenantId: string, input: BrandingSettings) {
   for (const [k, v] of Object.entries(input)) {
     if (k === "logoUrl") continue;
+    if (k === "courtHeaderColor" && !v) continue; // empty = "use each grid's default", not a color to validate
     if (typeof v !== "string" || !HEX.test(v)) throw new Error(`Invalid color for ${k}: "${v}" (expected #RRGGBB).`);
   }
   assertInlineImageOk("Logo", input.logoUrl);
@@ -261,6 +268,9 @@ export function brandingToCss(b: BrandingSettings): string {
     `--payment-paid:${b.paid}`,
     `--open-slot-text:${b.darkOpenSlotFont}`,
     `--selected-slot-text:${b.darkSelectedSlotFont}`,
+    // Not per-theme — set once here; the light block below never redefines
+    // it, so it carries over via the cascade (same element, no override).
+    ...(b.courtHeaderColor ? [`--court-header-color:${b.courtHeaderColor}`] : []),
   ].join(";");
   const light = [
     `--accent-optic:${b.lightPrimary}`,

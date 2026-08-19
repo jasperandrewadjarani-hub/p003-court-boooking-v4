@@ -322,6 +322,10 @@ model Court {
   lightingFeeMinor Int?       @map("lighting_fee_minor")
   description     String?
   sortOrder       Int         @default(0) @map("sort_order")
+  // Customer-facing court photo — clicking a court header opens it. Stored
+  // the same way as the logo/QR (data: URI or external URL), no separate
+  // storage backend needed.
+  imageUrl        String?     @map("image_url")
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookings     Booking[]

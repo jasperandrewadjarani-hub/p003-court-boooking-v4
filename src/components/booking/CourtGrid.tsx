@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment } from "react";
-import type { AvailabilityGrid } from "@/lib/booking/availability";
+import { Fragment, useState } from "react";
+import type { AvailabilityGrid, GridCourt } from "@/lib/booking/availability";
 
 export function slotKey(courtId: string, start: string): string {
   return `${courtId}__${start}`;
@@ -35,12 +35,19 @@ export function CourtGrid({
   onToggleSlot: (courtId: string, courtName: string, start: string, end: string) => void;
   isPending: boolean;
 }) {
+  const [imageCourt, setImageCourt] = useState<GridCourt | null>(null);
+
   return (
     <div className="grid-wrap" aria-busy={isPending}>
       <div className="court-grid" style={{ ["--court-count" as string]: grid.courts.length || 1 }}>
         <div className="head" />
         {grid.courts.map((c) => (
-          <div className="head" key={c.id}>
+          <div
+            className="head"
+            key={c.id}
+            onClick={() => c.imageUrl && setImageCourt(c)}
+            title={c.imageUrl ? "Tap to view court photo" : undefined}
+          >
             <strong>{c.name}</strong>
             <span>{c.description ?? (c.indoor ? "Indoor" : "Outdoor")}</span>
           </div>
@@ -83,6 +90,24 @@ export function CourtGrid({
           </Fragment>
         ))}
       </div>
+
+      {imageCourt && (
+        <div className="modal-backdrop" onClick={() => setImageCourt(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <span className="close" onClick={() => setImageCourt(null)}>
+              [ ESC ]
+            </span>
+            <h3>{imageCourt.name}</h3>
+            {imageCourt.description && (
+              <p className="dim mono" style={{ fontSize: 12, marginTop: -8 }}>
+                {imageCourt.description}
+              </p>
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageCourt.imageUrl ?? undefined} alt={imageCourt.name} style={{ width: "100%", borderRadius: "var(--radius)", display: "block" }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
