@@ -47,6 +47,7 @@ export function CourtGrid({
             key={c.id}
             onClick={() => c.imageUrl && setImageCourt(c)}
             title={c.imageUrl ? "Tap to view court photo" : undefined}
+            style={c.headerColor ? { color: c.headerColor } : undefined}
           >
             <strong>{c.name}</strong>
             <span>{c.description ?? (c.indoor ? "Indoor" : "Outdoor")}</span>

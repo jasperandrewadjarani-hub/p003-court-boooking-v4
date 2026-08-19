@@ -133,6 +133,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
   const selectionKind = selected.length ? selected[0].kind : null;
 
   function doBlock() {
+    if (!window.confirm("Block slots? This will prevent customers from booking these slots.")) return;
     setActionError(null);
     startTransition(async () => {
       const res = await blockSlotsAction(dateKey, selected.map((s) => ({ courtId: s.courtId, startTime: s.start, endTime: s.end })));
@@ -217,24 +218,25 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
   return (
     <div className="panel dispatch-panel">
       <div className="dispatch-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button
-            type="button"
-            className={`toggle-switch ${cropCustomerHours ? "on" : ""}`}
-            role="switch"
-            aria-checked={cropCustomerHours}
-            aria-label="Customer hours"
-            onClick={() => setCropCustomerHours((v) => !v)}
-          >
-            <span className="toggle-switch-knob" />
-          </button>
-          <div>
-            <div className="panel__title" style={{ margin: 0 }}>
-              Court Dispatch Grid <span className="mono dim" style={{ fontSize: 10, textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>· Customer hours</span>
-            </div>
-            <p className="dim mono" style={{ fontSize: 11, margin: 0 }}>
-              Live court occupancy, payment status, and availability by slot.
-            </p>
+        <div>
+          <div className="panel__title" style={{ margin: 0 }}>
+            Court Dispatch Grid
+          </div>
+          <p className="dim mono" style={{ fontSize: 11, margin: 0 }}>
+            Live court occupancy, payment status, and availability by slot.
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <span className="mono dim" style={{ fontSize: 11, textTransform: "none", letterSpacing: 0 }}>Show Regular Customer Hours Only</span>
+            <button
+              type="button"
+              className={`toggle-switch ${cropCustomerHours ? "on" : ""}`}
+              role="switch"
+              aria-checked={cropCustomerHours}
+              aria-label="Show regular customer hours only"
+              onClick={() => setCropCustomerHours((v) => !v)}
+            >
+              <span className="toggle-switch-knob" />
+            </button>
           </div>
         </div>
         <div className="dispatch-controls">
@@ -278,7 +280,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
         >
           <div className="dispatch-time-head" style={{ gridColumn: 1, gridRow: 1 }}><span>Time</span></div>
           {courtsV.map((c, ci) => (
-            <div className="dispatch-court-head" key={c.courtId} style={{ gridColumn: ci + 2, gridRow: 1 }}>
+            <div className="dispatch-court-head" key={c.courtId} style={{ gridColumn: ci + 2, gridRow: 1, ...(c.headerColor ? { color: c.headerColor } : {}) }}>
               {c.courtName}
               {c.description && <span>{c.description}</span>}
             </div>

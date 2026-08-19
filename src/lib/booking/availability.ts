@@ -85,6 +85,7 @@ export interface GridCourt {
   capacity: number;
   baseRateMinor: number | null;
   imageUrl: string | null;
+  headerColor: string | null;
   slots: GridSlot[];
 }
 
@@ -168,6 +169,7 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
         capacity: court.capacity,
         baseRateMinor: court.baseRateMinor,
         imageUrl: court.imageUrl,
+        headerColor: court.headerColor,
         slots,
       };
     });

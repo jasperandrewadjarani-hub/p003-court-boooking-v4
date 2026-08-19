@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { listCourtsAction, saveCourtAction, deleteCourtAction } from "@/app/admin/actions";
 import type { Court } from "@/generated/prisma/client";
 
-const EMPTY: any = { code: "", name: "", indoor: true, status: "available", surface: "", lighting: "", capacity: 4, airConditioned: false, baseRateMinor: "", lightingFeeMinor: "", description: "", imageUrl: "" };
+const EMPTY: any = { code: "", name: "", indoor: true, status: "available", surface: "", lighting: "", capacity: 4, airConditioned: false, baseRateMinor: "", lightingFeeMinor: "", description: "", imageUrl: "", headerColor: "" };
 const MAX_UPLOAD_BYTES = 1_400_000;
 
 export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
@@ -31,6 +31,7 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
       lightingFeeMinor: court.lightingFeeMinor !== null ? court.lightingFeeMinor / 100 : "",
       description: court.description ?? "",
       imageUrl: court.imageUrl ?? "",
+      headerColor: court.headerColor ?? "",
     });
   }
 
@@ -71,6 +72,7 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
       lightingFeeMinor: form.lightingFeeMinor !== "" ? Math.round(Number(form.lightingFeeMinor) * 100) : undefined,
       description: form.description || undefined,
       imageUrl: form.imageUrl || null,
+      headerColor: form.headerColor || null,
     });
     if (res.ok) {
       setForm(EMPTY);
@@ -172,6 +174,23 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
               <span className="dim mono" style={{ fontSize: 11 }}>No photo uploaded</span>
             )}
           </div>
+          <div className="settings-field">
+            <label>Header Label Color (customer + admin grids)</label>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="color"
+                style={{ width: 40, padding: 2 }}
+                value={/^#[0-9A-Fa-f]{6}$/.test(form.headerColor) ? form.headerColor : "#C6FF3D"}
+                onChange={(e) => setForm({ ...form, headerColor: e.target.value.toUpperCase() })}
+              />
+              <input value={form.headerColor} onChange={(e) => setForm({ ...form, headerColor: e.target.value.toUpperCase() })} placeholder="Default (green / cyan)" />
+            </div>
+            {form.headerColor && (
+              <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setForm({ ...form, headerColor: "" })}>
+                Use default color
+              </button>
+            )}
+          </div>
         </div>
         {error && <div className="field-warning">{error}</div>}
         <button className="btn" style={{ marginTop: 14 }} onClick={save} disabled={isPending}>
@@ -190,6 +209,7 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
               <th>Status</th>
               <th>Capacity</th>
               <th>Rate/Hr</th>
+              <th>Header Color</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -203,6 +223,16 @@ export function CourtsManager({ initialCourts }: { initialCourts: Court[] }) {
                 <td>{c.status}</td>
                 <td>{c.capacity}</td>
                 <td>{c.baseRateMinor !== null ? (c.baseRateMinor / 100).toFixed(2) : "—"}</td>
+                <td>
+                  {c.headerColor ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: c.headerColor, border: "1px solid var(--line-grid)" }} />
+                      <span className="mono dim" style={{ fontSize: 11 }}>{c.headerColor}</span>
+                    </span>
+                  ) : (
+                    <span className="dim mono" style={{ fontSize: 11 }}>Default</span>
+                  )}
+                </td>
                 <td className="action-cell">
                   <button className="btn secondary" onClick={() => edit(c)}>
                     Edit

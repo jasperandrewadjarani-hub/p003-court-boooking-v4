@@ -58,6 +58,11 @@ function formatDateHeader(dateKey: string): string {
   return `${formatDateShort(dateKey)} (${WEEKDAYS[date.getDay()]})`;
 }
 
+// Live update every 20s (matches the admin dispatch grid's poll cadence) so a
+// slot someone else just booked stops reading "Open" until the customer
+// happens to change dates or reload.
+const POLL_MS = 20_000;
+
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   const hour12 = h % 12 || 12;
@@ -188,6 +193,16 @@ export function BookingPage({
       setGrid(data);
     });
   }
+
+  // Quiet background refresh — a slot someone else just booked (or one that
+  // just lapsed back open) updates on its own instead of staying stale until
+  // the customer changes dates or reloads. Doesn't touch the cart selection.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchGridAction(dateKey).then(setGrid);
+    }, POLL_MS);
+    return () => clearInterval(id);
+  }, [dateKey]);
 
   function onToggleSlot(courtId: string, courtName: string, start: string, end: string) {
     const key = slotKey(courtId, start);

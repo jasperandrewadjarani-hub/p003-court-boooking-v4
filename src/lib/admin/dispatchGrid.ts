@@ -33,6 +33,7 @@ export interface DispatchCourt {
   courtId: string;
   courtName: string;
   description: string | null;
+  headerColor: string | null;
   slots: DispatchTile[];
 }
 
@@ -125,7 +126,7 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
           },
         });
       }
-      return { courtId: court.id, courtName: court.name, description: court.description, slots };
+      return { courtId: court.id, courtName: court.name, description: court.description, headerColor: court.headerColor, slots };
     });
 
     const [custStart, custEnd] = gridWindowMinutes(rules.customerGridStartTime, rules.customerGridEndTime);

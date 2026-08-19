@@ -44,12 +44,24 @@ function sortForDisplay(groups: MyBookingGroup[]): MyBookingGroup[] {
  * v3b's lookupBookings() always requires email+password to be typed on this
  * tab, even moments after signing in on the booking form itself, and the
  * client asked v4 to match that exactly (2026-08-19 feedback). */
+const STATUS_FILTER_OPTIONS = ["", "reserved", "confirmed", "cancelled", "lapsed", "no_show"];
+const PAYMENT_FILTER_LABELS: Record<string, string> = {
+  "": "All",
+  unpaid: "Unpaid",
+  awaiting_verification: "Awaiting Verification",
+  paid: "Paid",
+};
+
 export function MyBookingsPanel({ currency }: { currency: string }) {
   const [bookings, setBookings] = useState<MyBookingGroup[] | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState("");
 
   function refresh() {
     startTransition(async () => {
@@ -116,14 +128,53 @@ export function MyBookingsPanel({ currency }: { currency: string }) {
     );
   }
 
-  const sorted = sortForDisplay(bookings);
+  const rangeInvalid = !!(dateFrom && dateTo && dateFrom > dateTo);
+
+  const filtered = rangeInvalid ? [] : sortForDisplay(bookings).filter((group) => {
+    if (dateFrom && group.dateLabel < dateFrom) return false;
+    if (dateTo && group.dateLabel > dateTo) return false;
+    if (statusFilter && group.status !== statusFilter) return false;
+    if (paymentFilter && group.paymentStatus !== paymentFilter) return false;
+    return true;
+  });
 
   return (
     <div className="panel">
       <div className="panel__title">My Bookings</div>
+      <div className="admin-toolbar">
+        <div className="field">
+          <label>From</label>
+          <input type="date" className="input-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>To</label>
+          <input type="date" className="input-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Status</label>
+          <select className="select-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            {STATUS_FILTER_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s === "" ? "All" : (STATUS_LABELS[s] ?? s)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Payment</label>
+          <select className="select-sm" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
+            {Object.entries(PAYMENT_FILTER_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {rangeInvalid && <div className="field-warning">&quot;From&quot; date must be on or before the &quot;To&quot; date.</div>}
       {error && <div className="field-warning">{error}</div>}
-      {!sorted.length && <p className="dim mono">No bookings yet.</p>}
-      {sorted.map((group) => {
+      {!rangeInvalid && !filtered.length && <p className="dim mono">No bookings match these filters.</p>}
+      {filtered.map((group) => {
         const receiptState =
           group.hasReceipt && group.paymentStatus === "awaiting_verification"
             ? "Receipt Uploaded → Awaiting Verification"

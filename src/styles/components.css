@@ -168,7 +168,7 @@ header.hud {
 }
 .court-grid .head {
   position: sticky; top: 0; z-index: 7;
-  background: var(--bg-raised); color: var(--court-header-color, var(--accent-optic));
+  background: var(--bg-raised); color: var(--accent-optic);
   font-family: var(--font-display); font-weight: 600; text-transform: uppercase;
   font-size: 15px; letter-spacing: 1px; padding: 10px 6px; text-align: center;
 }
@@ -465,7 +465,7 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
 .dispatch-time-head, .dispatch-court-head, .dispatch-time-cell { background: var(--bg-panel); font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
 .dispatch-time-head, .dispatch-court-head { position: sticky; top: 0; z-index: 7; padding: 5px 6px; text-transform: uppercase; letter-spacing: .5px; }
 .dispatch-time-head { left: 0; z-index: 9; display: flex; flex-direction: column; justify-content: center; }
-.dispatch-court-head { font-family: var(--font-display); color: var(--court-header-color, var(--accent-cyan)); font-size: 12px; line-height: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dispatch-court-head { font-family: var(--font-display); color: var(--accent-cyan); font-size: 12px; line-height: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dispatch-court-head span { display: block; margin-top: 1px; font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dispatch-time-cell { position: sticky; left: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; padding: 4px 2px; font-size: 9px; line-height: 11px; color: var(--accent-cyan); box-shadow: 1px 0 0 var(--line-grid); text-align: center; }
 .dtc-range { display: flex; flex-direction: column; align-items: center; white-space: nowrap; }

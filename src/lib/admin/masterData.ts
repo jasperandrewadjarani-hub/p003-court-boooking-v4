@@ -17,7 +17,10 @@ export interface CourtInput {
   lightingFeeMinor?: number;
   description?: string;
   imageUrl?: string | null;
+  headerColor?: string | null;
 }
+
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 // Same cap as the logo/QR uploads in settings.ts — kept local to this file
 // since court images aren't part of the "branding" settings blob.
@@ -30,6 +33,9 @@ export async function listCourts(tenantId: string) {
 export async function saveCourt(tenantId: string, input: CourtInput) {
   if (input.imageUrl && input.imageUrl.startsWith("data:") && input.imageUrl.length > MAX_INLINE_IMAGE_CHARS) {
     throw new Error("Court image is too large — please use an image under ~1.4MB.");
+  }
+  if (input.headerColor && !HEX_COLOR.test(input.headerColor)) {
+    throw new Error(`Invalid header color "${input.headerColor}" (expected #RRGGBB).`);
   }
   return withTenant(tenantId, (tx) =>
     tx.court.upsert({

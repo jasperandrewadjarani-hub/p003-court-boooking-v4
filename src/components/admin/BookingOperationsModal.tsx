@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusAction, cancelBookingGroupAction, getBookingGroupAction } from "@/app/admin/actions";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
 import { labelize } from "@/lib/format";
@@ -44,10 +44,10 @@ export function BookingOperationsModal({
   const [booking, setBooking] = useState(initialBooking);
   const [firstName, lastName] = booking.customerName.split(" ", 2);
   const [form, setForm] = useState({ firstName: firstName ?? "", lastName: lastName ?? "", phone: booking.phone ?? "", notes: booking.notes ?? "" });
-  const balanceMinorInitial = initialBooking.totalMinor - initialBooking.amountPaidMinor;
-  // Defaults to the outstanding balance — the client specifically asked for
-  // this instead of an empty box the admin has to compute/type themselves.
-  const [payAmount, setPayAmount] = useState(balanceMinorInitial > 0 ? (balanceMinorInitial / 100).toFixed(2) : "");
+  // Left empty so the outstanding balance shows as gray placeholder text
+  // (client asked for a hint, not a pre-filled editable value) — leaving the
+  // box blank on submit falls back to that same balance amount.
+  const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<(typeof PAYMENT_METHODS)[number]>("cash");
   const [status, setStatus] = useState<(typeof STATUSES)[number]>(
     (STATUSES as readonly string[]).includes(booking.status) ? (booking.status as (typeof STATUSES)[number]) : "reserved"
@@ -55,6 +55,12 @@ export function BookingOperationsModal({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // Guards against the backdrop closing the modal when a mouse-drag text
+  // selection that STARTED inside the modal happens to release outside it
+  // (a plain onClick={onClose} on the backdrop fires in that case too,
+  // since the click's target is wherever the mouse came up) — only close
+  // when both the mousedown AND the click landed directly on the backdrop.
+  const mouseDownOnBackdrop = useRef(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -83,7 +89,11 @@ export function BookingOperationsModal({
   }
 
   async function recordPay() {
-    const amountMinor = Math.round(Number(payAmount) * 100);
+    // Blank box = accept the placeholder's suggested amount (the current
+    // outstanding balance), matching what the admin sees on screen.
+    const balance = booking.totalMinor - booking.amountPaidMinor;
+    const raw = payAmount.trim() !== "" ? payAmount : balance > 0 ? (balance / 100).toFixed(2) : "";
+    const amountMinor = Math.round(Number(raw) * 100);
     if (!amountMinor || amountMinor <= 0) {
       setError("Enter a valid payment amount.");
       return;
@@ -128,7 +138,15 @@ export function BookingOperationsModal({
   const balanceMinor = booking.totalMinor - booking.amountPaidMinor;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        mouseDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (mouseDownOnBackdrop.current && e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="modal booking-operations-modal" onClick={(e) => e.stopPropagation()}>
         <span className="close" onClick={onClose}>
           [ ESC ]
@@ -216,7 +234,13 @@ export function BookingOperationsModal({
         <div className="inline-form">
           <div>
             <label>Payment Amount</label>
-            <input type="number" min={0} value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="Enter payment received" />
+            <input
+              type="number"
+              min={0}
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              placeholder={balanceMinor > 0 ? (balanceMinor / 100).toFixed(2) : "Enter payment received"}
+            />
           </div>
           <div>
             <label>Payment Method</label>
@@ -251,6 +275,9 @@ export function BookingOperationsModal({
 
         <button className="btn danger block" style={{ marginTop: 10 }} onClick={cancel} disabled={pending}>
           Cancel Booking
+        </button>
+        <button className="btn secondary block" style={{ marginTop: 10 }} onClick={onClose}>
+          Close Manage Booking Form
         </button>
       </div>
     </div>

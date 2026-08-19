@@ -326,6 +326,9 @@ model Court {
   // the same way as the logo/QR (data: URI or external URL), no separate
   // storage backend needed.
   imageUrl        String?     @map("image_url")
+  // Per-court override for the header-label text color on both the customer
+  // and admin grids. Null/empty = each grid's own default accent color.
+  headerColor     String?     @map("header_color")
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookings     Booking[]

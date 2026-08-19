@@ -17,35 +17,18 @@ const POLL_MS = 20_000;
 // states that are actually used, not touch the underlying schema/enum.
 const STATUS_OPTIONS = ["", "reserved", "confirmed", "cancelled", "lapsed"];
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-function daysAheadKey(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 export function BookingsTable({ initialResult, currency }: { initialResult: PagedBookings; currency: string }) {
   const [result, setResult] = useState(initialResult);
-  const [dateFrom, setDateFrom] = useState(todayKey()); // default range: today -> +7 days
-  const [dateTo, setDateTo] = useState(daysAheadKey(7));
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminBookingGroup | null>(null);
-  const [rangeError, setRangeError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function fetchPage(targetPage: number) {
-    if (dateFrom && dateTo && dateFrom > dateTo) {
-      setRangeError('"From" date must be on or before the "To" date.');
-      return;
-    }
-    setRangeError(null);
     startTransition(async () => {
-      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
+      const r = await listBookingsAction({ status: status || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
       setResult(r);
       setPage(targetPage);
     });
@@ -62,7 +45,7 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
     const id = setInterval(() => fetchPage(page), POLL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, status, search, page]);
+  }, [status, search, page]);
 
   const bookings = result.items;
   const totalPages = Math.max(1, Math.ceil(result.totalCount / result.pageSize));
@@ -76,14 +59,6 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
       </div>
       <div className="panel">
         <div className="admin-toolbar">
-          <div className="field">
-            <label>From</label>
-            <input type="date" className="input-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>To</label>
-            <input type="date" className="input-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
           <div className="field">
             <label>Status</label>
             <select className="select-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -102,7 +77,6 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
             Filter
           </button>
         </div>
-        {rangeError && <div className="field-warning">{rangeError}</div>}
         <p className="dim mono" style={{ fontSize: 11 }}>
           Click a booking row to expand its courts/time slots. A booking made across multiple courts shares one Booking ID.
         </p>
