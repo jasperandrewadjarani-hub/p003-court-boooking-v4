@@ -29,6 +29,15 @@ export async function getPaymentSettings(tenantId: string): Promise<PaymentSetti
     if (!row) return DEFAULT_PAYMENT_SETTINGS;
     const value = row.value as Partial<PaymentSettings> & { qrImageUrl?: string | null };
     const qrImages = value.qrImages ?? (value.qrImageUrl ? [value.qrImageUrl] : []);
-    return { ...DEFAULT_PAYMENT_SETTINGS, ...value, qrImages };
+    // Return ONLY the known fields — never spread `...value`, which would leak
+    // the legacy single `qrImageUrl` into the admin form and let a save
+    // re-persist it (so it could resurface as a phantom QR #1). Reading it into
+    // qrImages above is the only thing the legacy field is used for now.
+    return {
+      gcashNumber: value.gcashNumber ?? null,
+      gcashAccountName: value.gcashAccountName ?? null,
+      paymentInstructions: value.paymentInstructions ?? null,
+      qrImages,
+    };
   });
 }

@@ -282,23 +282,30 @@ export function BookingPage({
     });
   }
 
-  // ESC: closes the topmost thing first (account modal, then the confirm-
-  // details modal), and only once nothing is open does it clear the current
-  // slot selection — matching the requested "ESC should also exit all
-  // selections" behavior without eating an ESC meant to just close a modal.
+  // Step the booking flow BACK one stage instead of closing outright — the
+  // client asked ESC/back to return to the previous step, not cancel the whole
+  // thing. Order: sign-in step → back to the confirm-details form → back to the
+  // grid (cart preserved) → clear the selection. Reused by the account modal's
+  // "← Back" button too.
+  function backFromAccount() {
+    setAccountModal(null);
+    setModalOpen(true); // reopen the confirm-details form; cart + fields are intact
+    setAuthError(null);
+  }
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       if (accountModal) {
-        setAccountModal(null);
+        backFromAccount();
       } else if (modalOpen) {
-        setModalOpen(false);
+        setModalOpen(false); // back to the grid; cart is preserved
       } else if (cart.length) {
         clearSelection();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountModal, modalOpen, cart.length]);
 
   // "Done" in SuccessModal — nag once if no receipt was uploaded (matches
@@ -553,6 +560,9 @@ export function BookingPage({
             <button type="submit" className="btn block" style={{ marginTop: 18 }} disabled={isPending}>
               {isPending ? "Working…" : "Continue → Sign In"}
             </button>
+            <button type="button" className="btn secondary block" style={{ marginTop: 10 }} onClick={() => setModalOpen(false)} disabled={isPending}>
+              ← Back to Court Selection
+            </button>
           </form>
         </div>
       )}
@@ -565,6 +575,7 @@ export function BookingPage({
           profile={{ firstName: form.firstName, lastName: form.lastName, phone: form.phone }}
           onAuthenticated={submitBooking}
           onClose={() => setAccountModal(null)}
+          onBack={backFromAccount}
         />
       )}
 

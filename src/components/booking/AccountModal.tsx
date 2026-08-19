@@ -10,6 +10,8 @@ interface Props {
   profile: { firstName: string; lastName: string; phone: string };
   onAuthenticated: () => void;
   onClose: () => void;
+  /** Step back to the confirm-details form (keeps the cart + entered details). */
+  onBack: () => void;
 }
 
 /**
@@ -18,7 +20,7 @@ interface Props {
  * emails get an OTP + must set a password; returning emails just enter
  * their password. A forgot-password sub-flow is available from login mode.
  */
-export function AccountModal({ email, mode, devCode, profile, onAuthenticated, onClose }: Props) {
+export function AccountModal({ email, mode, devCode, profile, onAuthenticated, onClose, onBack }: Props) {
   const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -106,6 +108,9 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
           <button type="submit" className="btn block" style={{ marginTop: 18 }} disabled={pending}>
             {pending ? "Working…" : "Set New Password"}
           </button>
+          <button type="button" className="btn secondary block" style={{ marginTop: 10 }} onClick={() => { setResetMode("idle"); setError(null); }}>
+            ← Back to Sign In
+          </button>
         </form>
       </div>
     );
@@ -163,6 +168,9 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
 
         <button type="submit" className="btn block" style={{ marginTop: 18 }} disabled={pending}>
           {pending ? "Working…" : mode === "register" ? "Register & Confirm Booking" : "Sign In & Confirm Booking"}
+        </button>
+        <button type="button" className="btn secondary block" style={{ marginTop: 10 }} onClick={onBack} disabled={pending}>
+          ← Back
         </button>
       </form>
     </div>

@@ -287,12 +287,16 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
         <div className="settings-grid">
           {Array.from({ length: 4 }, (_, i) => {
             const img = paymentsForm.qrImages[i];
-            function setSlot(value: string | null) {
-              const next = [...paymentsForm.qrImages];
-              if (value) next[i] = value;
-              else next.splice(i, 1); // remove — shifts later slots down rather than leaving a gap
-              setPaymentsForm({ ...paymentsForm, qrImages: next });
-            }
+            // Functional update so an async FileReader onload can never clobber
+            // an intervening change with a stale array snapshot.
+            const setSlot = (value: string | null) =>
+              setPaymentsForm((prev) => {
+                const next = [...prev.qrImages];
+                if (value) next[i] = value; // in place (replace or fill this slot)
+                else next.splice(i, 1); // remove — shifts later slots down rather than leaving a gap
+                return { ...prev, qrImages: next };
+              });
+            const linkStyle: React.CSSProperties = { background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, color: "inherit" };
             return (
               <div className="settings-field" key={i}>
                 <label>QR #{i + 1}</label>
@@ -302,9 +306,17 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={img} alt={`Payment QR ${i + 1}`} style={{ background: "#fff" }} />
                     </div>
-                    <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setSlot(null)}>
-                      Remove
-                    </button>
+                    <div className="dim mono" style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 6 }}>
+                      {/* Replace THIS slot in place — avoids the remove-then-re-add
+                          shuffle that reordered the other QRs. */}
+                      <label style={{ ...linkStyle, display: "inline-flex" }}>
+                        Replace
+                        <input type="file" accept="image/*" style={{ display: "none" }} onChange={pickImage((d) => setSlot(d))} />
+                      </label>
+                      <button type="button" style={linkStyle} onClick={() => setSlot(null)}>
+                        Remove
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <input type="file" accept="image/*" onChange={pickImage((d) => setSlot(d))} disabled={i > paymentsForm.qrImages.length} />

@@ -3,6 +3,7 @@ import { withTenant } from "@/lib/tenant/withTenant";
 import type { Prisma } from "@/generated/prisma/client";
 import type { BookingRulesSettings } from "@/lib/booking/availability";
 import type { PaymentSettings } from "@/lib/booking/paymentSettings";
+import { getPaymentSettings } from "@/lib/booking/paymentSettings";
 import { hashPassword, verifyPassword, validatePassword } from "@/lib/auth/password";
 
 export interface GeneralSettings {
@@ -132,7 +133,19 @@ export async function savePaymentSettings(tenantId: string, input: Partial<Payme
     if (input.qrImages.length > MAX_QR_IMAGES) throw new Error(`You can upload at most ${MAX_QR_IMAGES} QR images.`);
     input.qrImages.forEach((img, i) => assertInlineImageOk(`QR #${i + 1}`, img));
   }
-  return saveSettingKey(tenantId, "payment_settings", input);
+  // Merge onto the CLEAN current settings (getPaymentSettings no longer carries
+  // the legacy qrImageUrl), then write an explicit object with only the known
+  // keys. This does two things: a partial save never wipes fields it omitted,
+  // and every save actively PURGES the legacy `qrImageUrl` from storage (the
+  // old imported GCash QR that was resurfacing as a stuck QR #1).
+  const current = await getPaymentSettings(tenantId);
+  const clean: PaymentSettings = {
+    gcashNumber: input.gcashNumber !== undefined ? input.gcashNumber : current.gcashNumber,
+    gcashAccountName: input.gcashAccountName !== undefined ? input.gcashAccountName : current.gcashAccountName,
+    paymentInstructions: input.paymentInstructions !== undefined ? input.paymentInstructions : current.paymentInstructions,
+    qrImages: input.qrImages !== undefined ? input.qrImages : current.qrImages,
+  };
+  return saveSettingKey(tenantId, "payment_settings", clean);
 }
 
 // ------------------------------- Branding (v3b) --------------------------------
