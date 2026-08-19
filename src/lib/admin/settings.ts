@@ -128,24 +128,26 @@ function assertInlineImageOk(field: string, value: string | null | undefined) {
 
 const MAX_QR_IMAGES = 4;
 
+// Writes ONLY the light text fields to payment_settings — the QR images live
+// in their own key now (savePaymentQrImages). Writing an explicit clean object
+// also purges any legacy qrImages/qrImageUrl left in this blob from before the
+// split, so the hot-path getPaymentSettings read stays tiny.
 export async function savePaymentSettings(tenantId: string, input: Partial<PaymentSettings>) {
-  if (input.qrImages) {
-    if (input.qrImages.length > MAX_QR_IMAGES) throw new Error(`You can upload at most ${MAX_QR_IMAGES} QR images.`);
-    input.qrImages.forEach((img, i) => assertInlineImageOk(`QR #${i + 1}`, img));
-  }
-  // Merge onto the CLEAN current settings (getPaymentSettings no longer carries
-  // the legacy qrImageUrl), then write an explicit object with only the known
-  // keys. This does two things: a partial save never wipes fields it omitted,
-  // and every save actively PURGES the legacy `qrImageUrl` from storage (the
-  // old imported GCash QR that was resurfacing as a stuck QR #1).
   const current = await getPaymentSettings(tenantId);
   const clean: PaymentSettings = {
     gcashNumber: input.gcashNumber !== undefined ? input.gcashNumber : current.gcashNumber,
     gcashAccountName: input.gcashAccountName !== undefined ? input.gcashAccountName : current.gcashAccountName,
     paymentInstructions: input.paymentInstructions !== undefined ? input.paymentInstructions : current.paymentInstructions,
-    qrImages: input.qrImages !== undefined ? input.qrImages : current.qrImages,
   };
   return saveSettingKey(tenantId, "payment_settings", clean);
+}
+
+// The QR images, in their own tenant_settings key (never read on the customer
+// hot path — only the post-booking success modal and the admin settings page).
+export async function savePaymentQrImages(tenantId: string, qrImages: string[]) {
+  if (qrImages.length > MAX_QR_IMAGES) throw new Error(`You can upload at most ${MAX_QR_IMAGES} QR images.`);
+  qrImages.forEach((img, i) => assertInlineImageOk(`QR #${i + 1}`, img));
+  return saveSettingKey(tenantId, "payment_qr_images", { qrImages });
 }
 
 // ------------------------------- Branding (v3b) --------------------------------

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { uploadReceiptAction } from "@/lib/booking/receipts";
+import { fetchPaymentQrImagesAction } from "@/app/actions";
 import type { PaymentSettings } from "@/lib/booking/paymentSettings";
 
 interface Props {
@@ -23,9 +24,18 @@ export function SuccessModal({ bookingGroupId, reference, totalMinor, currency, 
   const [status, setStatus] = useState<"idle" | "uploading" | "uploaded" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState(false);
-  const qrImages = paymentSettings.qrImages;
+  // QR images are fetched on demand (not shipped in the page payload) — see
+  // fetchPaymentQrImagesAction. This modal only appears after a booking, which
+  // is the one moment the QRs are actually needed.
+  const [qrImages, setQrImages] = useState<string[]>([]);
   const [qrIndex, setQrIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetchPaymentQrImagesAction().then((imgs) => { if (live) setQrImages(imgs); });
+    return () => { live = false; };
+  }, []);
 
   function goQr(delta: number) {
     setQrIndex((i) => (i + delta + qrImages.length) % qrImages.length);

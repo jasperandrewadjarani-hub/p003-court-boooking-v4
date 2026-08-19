@@ -49,6 +49,7 @@ import {
   type BrandingSettings,
   saveBookingRules,
   savePaymentSettings,
+  savePaymentQrImages,
 } from "@/lib/admin/settings";
 import { getBookingRules, type BookingRulesSettings } from "@/lib/booking/availability";
 import { getPaymentSettings, type PaymentSettings } from "@/lib/booking/paymentSettings";
@@ -436,6 +437,17 @@ export async function savePaymentSettingsAction(input: Partial<PaymentSettings>)
   await requireStaff();
   try {
     await savePaymentSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function savePaymentQrImagesAction(qrImages: string[]) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await savePaymentQrImages(tenant.id, qrImages);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };

@@ -5,12 +5,21 @@ import { getAvailabilityGrid, getBookingRules } from "@/lib/booking/availability
 import { createBooking, priceCart, SlotTakenError, type CartItemInput } from "@/lib/booking/create";
 import { getCurrentCustomer } from "@/lib/auth/customerAuth";
 import { getMyBookings } from "@/lib/booking/customerBookings";
+import { getPaymentQrImages } from "@/lib/booking/paymentSettings";
 import { withTenant } from "@/lib/tenant/withTenant";
 
 export async function fetchGridAction(dateKey: string) {
   const tenant = await resolveTenant();
   const grid = await getAvailabilityGrid(tenant.id, dateKey);
   return grid;
+}
+
+/** On-demand fetch of the tenant's payment QR images — called by the success
+ * modal AFTER a booking, so the ~800 KB of QR data-URIs never load on the
+ * customer's initial page render. */
+export async function fetchPaymentQrImagesAction() {
+  const tenant = await resolveTenant();
+  return getPaymentQrImages(tenant.id);
 }
 
 /** Live pre-checkout total preview — same calculateCartTotal call the real

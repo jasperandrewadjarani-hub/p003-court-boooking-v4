@@ -5,6 +5,7 @@ import {
   saveGeneralSettingsAction,
   saveBookingRulesAction,
   savePaymentSettingsAction,
+  savePaymentQrImagesAction,
   saveLoyaltySettingsAction,
   saveNotificationSettingsAction,
   savePerformanceSettingsAction,
@@ -20,6 +21,7 @@ interface Props {
   general: GeneralSettings;
   rules: BookingRulesSettings;
   payments: PaymentSettings;
+  qrImages: string[];
   loyalty: LoyaltySettings;
   notifications: NotificationSettings;
   performance: PerformanceSettings;
@@ -44,10 +46,11 @@ const STATE_SWATCHES: [keyof BrandingSettings, string][] = [
   ["unpaid", "Unpaid Medal"], ["awaiting", "Awaiting Verification Medal"], ["paid", "Paid Medal"],
 ];
 
-export function SettingsManager({ general, rules, payments, loyalty, notifications, performance, branding }: Props) {
+export function SettingsManager({ general, rules, payments, qrImages, loyalty, notifications, performance, branding }: Props) {
   const [generalForm, setGeneralForm] = useState(general);
   const [rulesForm, setRulesForm] = useState(rules);
   const [paymentsForm, setPaymentsForm] = useState(payments);
+  const [qrForm, setQrForm] = useState<string[]>(qrImages);
   const [loyaltyForm, setLoyaltyForm] = useState(loyalty);
   const [notifForm, setNotifForm] = useState(notifications);
   const [perfForm, setPerfForm] = useState(performance);
@@ -65,6 +68,7 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
       saveGeneralSettingsAction(generalForm),
       saveBookingRulesAction(rulesForm),
       savePaymentSettingsAction(paymentsForm),
+      savePaymentQrImagesAction(qrForm),
       saveLoyaltySettingsAction(loyaltyForm),
       saveNotificationSettingsAction(notifForm),
       savePerformanceSettingsAction(perfForm),
@@ -286,15 +290,15 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
         </div>
         <div className="settings-grid">
           {Array.from({ length: 4 }, (_, i) => {
-            const img = paymentsForm.qrImages[i];
+            const img = qrForm[i];
             // Functional update so an async FileReader onload can never clobber
             // an intervening change with a stale array snapshot.
             const setSlot = (value: string | null) =>
-              setPaymentsForm((prev) => {
-                const next = [...prev.qrImages];
+              setQrForm((prev) => {
+                const next = [...prev];
                 if (value) next[i] = value; // in place (replace or fill this slot)
                 else next.splice(i, 1); // remove — shifts later slots down rather than leaving a gap
-                return { ...prev, qrImages: next };
+                return next;
               });
             const linkStyle: React.CSSProperties = { background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, color: "inherit" };
             return (
@@ -319,7 +323,7 @@ export function SettingsManager({ general, rules, payments, loyalty, notificatio
                     </div>
                   </>
                 ) : (
-                  <input type="file" accept="image/*" onChange={pickImage((d) => setSlot(d))} disabled={i > paymentsForm.qrImages.length} />
+                  <input type="file" accept="image/*" onChange={pickImage((d) => setSlot(d))} disabled={i > qrForm.length} />
                 )}
               </div>
             );
