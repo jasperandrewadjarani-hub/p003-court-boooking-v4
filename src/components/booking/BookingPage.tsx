@@ -17,8 +17,6 @@ interface TenantInfo {
   name: string;
   slug: string;
   currency: string;
-  primaryColor: string;
-  accentColor: string;
   logoUrl?: string | null;
 }
 
@@ -104,6 +102,7 @@ export function BookingPage({
   reservationHoldMinutes,
   maxCourtHoursPerBooking,
   maxAdvanceBookingDays,
+  hasActiveDiscount,
 }: {
   tenant: TenantInfo;
   initialGrid: AvailabilityGrid;
@@ -112,6 +111,7 @@ export function BookingPage({
   reservationHoldMinutes: number;
   maxCourtHoursPerBooking: number;
   maxAdvanceBookingDays: number;
+  hasActiveDiscount: boolean;
 }) {
   const [dateKey, setDateKey] = useState(initialGrid.date);
   const [grid, setGrid] = useState(initialGrid);
@@ -193,13 +193,25 @@ export function BookingPage({
     setCart((prev) => prev.filter((c) => c.key !== key));
   }
 
+  function clearSelection() {
+    setCart([]);
+    setStatus({ kind: "idle" });
+  }
+
   // Step 1: booking modal "Continue → Sign In" — determines register vs.
   // login by email (matches v2's beginCustomerBookingAuth exactly) and
   // opens the account modal. Doesn't book anything yet.
   function continueToAccount() {
     if (!cart.length) return;
     if (!form.firstName || !form.lastName || !form.email || !form.phone) {
-      setStatus({ kind: "error", message: "Fill in all fields." });
+      setAuthError("Please input required information — first name, last name, mobile number, and email are all required.");
+      return;
+    }
+    // A discount code the customer typed but never resolved successfully
+    // (v3b: invalid/exhausted codes block checkout, they don't silently
+    // fall through to sign-in with no discount applied).
+    if (preview.discountError) {
+      setAuthError(preview.discountError);
       return;
     }
     setAuthError(null);
@@ -231,15 +243,41 @@ export function BookingPage({
       });
       setAccountModal(null);
       if (res.ok) {
+        setStatus({ kind: "idle" }); // clear any stale error from an earlier failed attempt
+        setDiscountCode(""); // don't leave a resolved/rejected code sitting in the box for the next booking
         setCompletedBooking({ bookingGroupId: res.result.bookingGroupId, reference: res.result.reference, totalMinor: res.result.totalMinor });
         setCart([]);
         const fresh = await fetchGridAction(dateKey);
         setGrid(fresh);
       } else {
-        setStatus({ kind: "error", message: res.error });
+        // Re-open the confirm-details form instead of dumping the customer
+        // back to the bare grid — the cart/form state is all still intact,
+        // only the modal visibility flags were reset. (Reported bug: a
+        // failed attempt "randomly exits the form.")
+        setModalOpen(true);
+        setAuthError(res.error);
       }
     });
   }
+
+  // ESC: closes the topmost thing first (account modal, then the confirm-
+  // details modal), and only once nothing is open does it clear the current
+  // slot selection — matching the requested "ESC should also exit all
+  // selections" behavior without eating an ESC meant to just close a modal.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (accountModal) {
+        setAccountModal(null);
+      } else if (modalOpen) {
+        setModalOpen(false);
+      } else if (cart.length) {
+        clearSelection();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [accountModal, modalOpen, cart.length]);
 
   // "Done" in SuccessModal — nag once if no receipt was uploaded (matches
   // v2's ReceiptReminderModal), since the reservation auto-lapses after
@@ -272,7 +310,7 @@ export function BookingPage({
   }, 0);
 
   return (
-    <main style={{ ["--tenant-primary" as string]: tenant.primaryColor, ["--tenant-accent" as string]: tenant.accentColor }}>
+    <main>
       <div className="jt-brand-bar">
         <a href="https://www.facebook.com/profile.php?id=61590234100280" target="_blank" rel="noopener noreferrer">
           Powered by JT Consulting &amp; Analytics
@@ -295,7 +333,7 @@ export function BookingPage({
         <h1 className="brand">
           <span>{tenant.name}</span>
         </h1>
-        <div className="brand-sub">LIVE COURT AVAILABILITY — TAP SLOTS TO BUILD YOUR BOOKING</div>
+        <div className="brand-sub">LIVE COURT AVAILABILITY | TAP SLOTS TO BUILD YOUR BOOKING</div>
       </header>
 
       <div className="shell">
@@ -342,7 +380,7 @@ export function BookingPage({
                 Court Grid — <span className="mono dim">{formatDateLabel(dateKey)}</span>
               </div>
               <p className="dim mono" style={{ fontSize: 11, marginTop: -8 }}>
-                Tap multiple open slots to add them to your booking, across any court. Updates live — no refresh needed.
+                Tap multiple open slots to add them to your booking, across any court. Updates live. No refresh needed.
               </p>
               <div key={dateKey}>
                 <CourtGrid grid={grid} selectedKeys={selectedKeys} onToggleSlot={onToggleSlot} isPending={isPending} />
@@ -354,6 +392,7 @@ export function BookingPage({
               totalHoursLabel={`${totalHours.toFixed(1)} / ${maxCourtHoursPerBooking} court-hours`}
               totalText={cart.length ? `${tenant.currency} ${(preview.totalMinor / 100).toFixed(2)}` : "—"}
               onRemove={removeCartItem}
+              onClearAll={clearSelection}
               onContinue={() => setModalOpen(true)}
             />
           </>
@@ -379,7 +418,7 @@ export function BookingPage({
 
       {modalOpen && cart.length > 0 && (
         <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); continueToAccount(); }}>
             <span className="close" onClick={() => setModalOpen(false)}>
               [ ESC ]
             </span>
@@ -430,7 +469,12 @@ export function BookingPage({
               )}
             </select>
             <label>Discount Code (optional)</label>
-            <input value={discountCode} onChange={(e) => setDiscountCode(e.target.value)} placeholder="Enter code" />
+            <input
+              value={discountCode}
+              onChange={(e) => setDiscountCode(e.target.value)}
+              placeholder={hasActiveDiscount ? "Enter code" : "No active discount codes"}
+              disabled={!hasActiveDiscount}
+            />
             {preview.discountError ? (
               <div className="field-warning">{preview.discountError}</div>
             ) : preview.discountMinor > 0 ? (
@@ -448,10 +492,10 @@ export function BookingPage({
             </div>
 
             {authError && <div className="field-warning">{authError}</div>}
-            <button className="btn block" style={{ marginTop: 18 }} onClick={continueToAccount} disabled={isPending}>
+            <button type="submit" className="btn block" style={{ marginTop: 18 }} disabled={isPending}>
               {isPending ? "Working…" : "Continue → Sign In"}
             </button>
-          </div>
+          </form>
         </div>
       )}
 

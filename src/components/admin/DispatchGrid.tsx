@@ -212,7 +212,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
 
       <div className="dispatch-legend">
         <span><i className="dispatch-dot paid" />Paid / Confirmed</span>
-        <span><i className="dispatch-dot unpaid" style={{ background: "#FFCA3A" }} />Awaiting Verification</span>
+        <span><i className="dispatch-dot awaiting" />Awaiting Verification</span>
         <span><i className="dispatch-dot unpaid" />Reserved / Unpaid</span>
         <span><i className="dispatch-dot vacant" />Vacant</span>
         <span><i className="dispatch-dot blocked" />Blocked</span>

@@ -240,8 +240,14 @@ export function brandingToCss(b: BrandingSettings): string {
     `--line-grid:${b.darkGrid}`,
     `--text-primary:${b.darkFont}`,
     `--text-dim:${b.darkMutedFont}`,
-    `--accent-optic-dim:${b.darkOpenSlotFont}`,
-    `--success:${b.confirmed}`,
+    // --accent-optic-dim is deliberately NOT set here — it's a computed
+    // color-mix() in tokens.css (matching v3b CSS.html exactly), not an
+    // admin-editable color. --success mirrors v3b's actual binding
+    // (document.documentElement.style.setProperty('--success',
+    // BRAND_PAID_COLOR) in v3b's JS.html/AdminJS.html) — the Paid Medal
+    // color, not the Confirmed/Active color, even though they share the
+    // same default hex.
+    `--success:${b.paid}`,
     `--status-confirmed:${b.confirmed}`,
     `--status-reserved:${b.reserved}`,
     `--status-inactive:${b.inactive}`,
@@ -261,8 +267,7 @@ export function brandingToCss(b: BrandingSettings): string {
     `--line-grid:${b.lightGrid}`,
     `--text-primary:${b.lightFont}`,
     `--text-dim:${b.lightMutedFont}`,
-    `--accent-optic-dim:${b.lightOpenSlotFont}`,
-    `--success:${b.confirmed}`,
+    `--success:${b.paid}`,
     `--status-confirmed:${b.confirmed}`,
     `--status-reserved:${b.reserved}`,
     `--status-inactive:${b.inactive}`,

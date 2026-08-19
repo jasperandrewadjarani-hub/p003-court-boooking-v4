@@ -4,6 +4,7 @@ import { getAvailabilityGrid, getBookingRules } from "@/lib/booking/availability
 import { getActiveMemberships } from "@/lib/booking/memberships";
 import { getPaymentSettings } from "@/lib/booking/paymentSettings";
 import { getBrandingSettings, brandingToCss } from "@/lib/admin/settings";
+import { listDiscounts } from "@/lib/admin/masterData";
 import { BookingPage } from "@/components/booking/BookingPage";
 
 function todayKey(): string {
@@ -17,13 +18,15 @@ export default async function Home() {
   try {
     const tenant = await resolveTenant();
     const dateKey = todayKey();
-    const [grid, memberships, paymentSettings, rules, branding] = await Promise.all([
+    const [grid, memberships, paymentSettings, rules, branding, discounts] = await Promise.all([
       getAvailabilityGrid(tenant.id, dateKey),
       getActiveMemberships(tenant.id),
       getPaymentSettings(tenant.id),
       getBookingRules(tenant.id),
       getBrandingSettings(tenant.id),
+      listDiscounts(tenant.id),
     ]);
+    const hasActiveDiscount = discounts.some((d) => d.active);
 
     return (
       <>
@@ -33,8 +36,6 @@ export default async function Home() {
           name: tenant.name,
           slug: tenant.slug,
           currency: tenant.currency,
-          primaryColor: tenant.primaryColor ?? "#C6FF3D",
-          accentColor: tenant.accentColor ?? "#2EE6FF",
           logoUrl: tenant.logoUrl,
         }}
         initialGrid={grid}
@@ -43,6 +44,7 @@ export default async function Home() {
         reservationHoldMinutes={rules.reservationHoldMinutes}
         maxCourtHoursPerBooking={rules.maxCourtHoursPerBooking}
         maxAdvanceBookingDays={rules.maxAdvanceBookingDays}
+        hasActiveDiscount={hasActiveDiscount}
       />
       </>
     );

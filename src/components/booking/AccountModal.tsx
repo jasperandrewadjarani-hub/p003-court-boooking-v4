@@ -88,7 +88,7 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
   if (resetMode === "requested") {
     return (
       <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); completeReset(); }}>
           <span className="close" onClick={onClose}>[ ESC ]</span>
           <h3>Reset Password</h3>
           {resetDevCode && (
@@ -103,17 +103,17 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
           <label>Confirm New Password</label>
           <input type="password" value={resetConfirm} onChange={(e) => setResetConfirm(e.target.value)} />
           {error && <div className="field-warning">{error}</div>}
-          <button className="btn block" style={{ marginTop: 18 }} onClick={completeReset} disabled={pending}>
+          <button type="submit" className="btn block" style={{ marginTop: 18 }} disabled={pending}>
             {pending ? "Working…" : "Set New Password"}
           </button>
-        </div>
+        </form>
       </div>
     );
   }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <span className="close" onClick={onClose}>[ ESC ]</span>
         <h3>{mode === "register" ? "Create Your Account" : "Customer Sign In"}</h3>
         <p className="dim mono" style={{ fontSize: 13 }}>
@@ -151,10 +151,10 @@ export function AccountModal({ email, mode, devCode, profile, onAuthenticated, o
 
         {error && <div className="field-warning">{error}</div>}
 
-        <button className="btn block" style={{ marginTop: 18 }} onClick={submit} disabled={pending}>
+        <button type="submit" className="btn block" style={{ marginTop: 18 }} disabled={pending}>
           {pending ? "Working…" : mode === "register" ? "Register & Confirm Booking" : "Sign In & Confirm Booking"}
         </button>
-      </div>
+      </form>
     </div>
   );
 }

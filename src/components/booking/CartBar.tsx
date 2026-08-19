@@ -24,12 +24,14 @@ export function CartBar({
   totalHoursLabel,
   totalText,
   onRemove,
+  onClearAll,
   onContinue,
 }: {
   items: CartItem[];
   totalHoursLabel: string;
   totalText: string;
   onRemove: (key: string) => void;
+  onClearAll: () => void;
   onContinue: () => void;
 }) {
   return (
@@ -47,6 +49,9 @@ export function CartBar({
       <div className="cart-bar__row">
         <span className="mono dim">{totalHoursLabel}</span>
         <div className="cart-bar__total">Total: {totalText}</div>
+        <button type="button" className="btn secondary" onClick={onClearAll} disabled={!items.length}>
+          Clear Selection
+        </button>
         <button className="btn" onClick={onContinue} disabled={!items.length}>
           Continue
         </button>

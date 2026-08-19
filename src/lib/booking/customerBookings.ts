@@ -18,6 +18,7 @@ export interface MyBookingGroup {
   status: string;
   paymentStatus: string;
   totalMinor: number;
+  hasReceipt: boolean;
   items: MyBookingItem[];
 }
 
@@ -35,7 +36,7 @@ export async function getMyBookings(tenantId: string): Promise<MyBookingGroup[] 
       where: { tenantId, customerId: customer.id },
       orderBy: { createdAt: "desc" },
       take: 50,
-      include: { bookings: { include: { court: true }, orderBy: { startsAt: "asc" } } },
+      include: { bookings: { include: { court: true }, orderBy: { startsAt: "asc" } }, receipts: { select: { id: true } } },
     });
 
     return groups.map((g) => ({
@@ -45,6 +46,7 @@ export async function getMyBookings(tenantId: string): Promise<MyBookingGroup[] 
       status: g.status,
       paymentStatus: g.paymentStatus,
       totalMinor: g.totalMinor,
+      hasReceipt: g.receipts.length > 0,
       items: compileSlots(
         g.bookings.map((b) => ({
           courtName: b.court.name,
