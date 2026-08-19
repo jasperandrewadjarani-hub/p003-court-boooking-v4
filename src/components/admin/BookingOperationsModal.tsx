@@ -147,6 +147,15 @@ export function BookingOperationsModal({ booking, currency, onClose, onChanged }
           </div>
         </div>
 
+        <div className="settings-section-title">Payment Receipt</div>
+        {booking.receiptId ? (
+          <a className="btn secondary" href={`/api/receipts/${booking.receiptId}`} target="_blank" rel="noopener noreferrer">
+            View Receipt
+          </a>
+        ) : (
+          <span className="dim mono" style={{ fontSize: 11 }}>No receipt uploaded</span>
+        )}
+
         <div className="settings-section-title">Record New Payment</div>
         <div className="inline-form">
           <div>

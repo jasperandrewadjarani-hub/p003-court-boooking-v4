@@ -31,6 +31,7 @@ export interface AdminBookingGroup {
   notes: string | null;
   players: number;
   items: AdminBookingItem[];
+  receiptId: string | null;
 }
 
 /** Matches v2's adminListBookings — date range, status, and a name/phone/
@@ -66,6 +67,7 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
       include: {
         customer: { include: { user: true } },
         bookings: { include: { court: true }, orderBy: { startsAt: "asc" } },
+        receipts: { select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 },
       },
     });
 
@@ -89,6 +91,7 @@ function mapAdminGroup(g: any): AdminBookingGroup {
     notes: g.notes,
     players: g.bookings[0]?.players ?? 1,
     items: compileSlots(g.bookings.map((b: any) => ({ courtName: b.court.name, start: formatUtcTime(b.startsAt), end: formatUtcTime(b.endsAt), priceMinor: b.priceMinor }))),
+    receiptId: g.receipts?.[0]?.id ?? null,
   };
 }
 
@@ -98,7 +101,11 @@ export async function getBookingGroupById(tenantId: string, id: string): Promise
   return withTenant(tenantId, async (tx) => {
     const g = await tx.bookingGroup.findFirst({
       where: { tenantId, id },
-      include: { customer: { include: { user: true } }, bookings: { include: { court: true }, orderBy: { startsAt: "asc" } } },
+      include: {
+        customer: { include: { user: true } },
+        bookings: { include: { court: true }, orderBy: { startsAt: "asc" } },
+        receipts: { select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 },
+      },
     });
     return g ? mapAdminGroup(g) : null;
   });
