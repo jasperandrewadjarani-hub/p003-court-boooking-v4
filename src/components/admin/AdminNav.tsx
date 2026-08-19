@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/admin/pricing", label: "Price Matrix" },
   { href: "/admin/memberships", label: "Memberships and Discounts" },
   { href: "/admin/holidays", label: "Holidays" },
+  { href: "/admin/staff", label: "Staff Accounts" },
   { href: "/admin/settings", label: "Settings" },
 ];
 

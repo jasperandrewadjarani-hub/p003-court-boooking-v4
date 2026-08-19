@@ -23,7 +23,7 @@ function generateCode(): string {
   return randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
 }
 
-export type OtpPurpose = "register" | "reset";
+export type OtpPurpose = "register" | "reset" | "add_staff";
 
 /** Issues a new challenge (or reports one is already outstanding), enqueues
  * the delivery email. Returns the raw code ONLY for the dev-mode email

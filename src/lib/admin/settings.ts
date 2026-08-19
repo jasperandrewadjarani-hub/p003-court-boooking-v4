@@ -3,6 +3,7 @@ import { withTenant } from "@/lib/tenant/withTenant";
 import type { Prisma } from "@/generated/prisma/client";
 import type { BookingRulesSettings } from "@/lib/booking/availability";
 import type { PaymentSettings } from "@/lib/booking/paymentSettings";
+import { hashPassword, verifyPassword, validatePassword } from "@/lib/auth/password";
 
 export interface GeneralSettings {
   name: string;
@@ -235,6 +236,42 @@ export async function saveBrandingSettings(tenantId: string, input: BrandingSett
 export async function resetBrandingSettings(tenantId: string) {
   await saveSettingKey(tenantId, "branding", DEFAULT_BRANDING);
   await withTenant(tenantId, (tx) => tx.tenant.update({ where: { id: tenantId }, data: { primaryColor: DEFAULT_BRANDING.primary, accentColor: DEFAULT_BRANDING.secondary } }));
+}
+
+// ---------------------------- Super-admin gate (staff) ---------------------------
+// A single shared password (separate from any individual staff login) that
+// gates the "add a new staff account" flow, per client request 2026-08-19.
+// Stored as its own TenantSetting key, never exposed to the client — only
+// isSet/verify results ever leave the server.
+
+interface SuperAdminSettings {
+  passwordHash: string | null;
+}
+const DEFAULT_SUPER_ADMIN: SuperAdminSettings = { passwordHash: null };
+
+export async function getSuperAdminStatus(tenantId: string): Promise<{ isSet: boolean }> {
+  const s = await getSettingKey(tenantId, "super_admin", DEFAULT_SUPER_ADMIN);
+  return { isSet: !!s.passwordHash };
+}
+
+export async function verifySuperAdminPassword(tenantId: string, password: string): Promise<boolean> {
+  const s = await getSettingKey(tenantId, "super_admin", DEFAULT_SUPER_ADMIN);
+  if (!s.passwordHash || !password) return false;
+  return verifyPassword(s.passwordHash, password);
+}
+
+/** First call ever (no password set yet) bootstraps it with no current-password
+ *  check; every call after that requires the correct current password. */
+export async function setSuperAdminPassword(tenantId: string, currentPassword: string | null, newPassword: string): Promise<void> {
+  validatePassword(newPassword);
+  const s = await getSettingKey(tenantId, "super_admin", DEFAULT_SUPER_ADMIN);
+  if (s.passwordHash) {
+    if (!currentPassword || !(await verifyPassword(s.passwordHash, currentPassword))) {
+      throw new Error("Incorrect current super-admin password.");
+    }
+  }
+  const passwordHash = await hashPassword(newPassword);
+  await saveSettingKey(tenantId, "super_admin", { passwordHash });
 }
 
 /** Generates the per-tenant CSS-custom-property overrides injected into both

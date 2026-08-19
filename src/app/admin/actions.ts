@@ -53,6 +53,16 @@ import { getBookingRules, type BookingRulesSettings } from "@/lib/booking/availa
 import { getPaymentSettings, type PaymentSettings } from "@/lib/booking/paymentSettings";
 import { hashPassword, verifyPassword, validatePassword } from "@/lib/auth/password";
 import { getAnalytics } from "@/lib/admin/analytics";
+import { getSuperAdminStatus, setSuperAdminPassword } from "@/lib/admin/settings";
+import {
+  listStaffAdmin,
+  beginAddStaff,
+  completeAddStaff,
+  setStaffActive,
+  setStaffRole,
+  type CompleteAddStaffInput,
+} from "@/lib/admin/staff";
+import type { StaffRole } from "@/generated/prisma/client";
 
 export async function fetchDispatchGridAction(dateKey: string) {
   const tenant = await resolveTenant();
@@ -459,6 +469,75 @@ export async function changeOwnPasswordAction(currentPassword: string, newPasswo
     }
     const passwordHash = await hashPassword(newPassword);
     await withTenant(tenant.id, (tx) => tx.user.update({ where: { id: staff.userId }, data: { passwordHash } }));
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+// -------------------------------- Staff accounts ----------------------------------
+
+export async function getSuperAdminStatusAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return getSuperAdminStatus(tenant.id);
+}
+
+export async function setSuperAdminPasswordAction(currentPassword: string | null, newPassword: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await setSuperAdminPassword(tenant.id, currentPassword, newPassword);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function listStaffAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return listStaffAdmin(tenant.id);
+}
+
+export async function beginAddStaffAction(superAdminPassword: string, email: string) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    const result = await beginAddStaff(tenant.id, superAdminPassword, email);
+    return { ok: true as const, ...result };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function completeAddStaffAction(input: CompleteAddStaffInput) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await completeAddStaff(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function setStaffActiveAction(staffId: string, active: boolean) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await setStaffActive(tenant.id, staffId, active);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
+}
+
+export async function setStaffRoleAction(staffId: string, role: StaffRole) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await setStaffRole(tenant.id, staffId, role);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
