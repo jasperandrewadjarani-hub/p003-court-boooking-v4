@@ -228,15 +228,27 @@ export async function getBrandingSettings(tenantId: string) {
 }
 
 export async function saveBrandingSettings(tenantId: string, input: BrandingSettings) {
-  for (const [k, v] of Object.entries(input)) {
-    if (k === "logoUrl") continue;
-    if (typeof v !== "string" || !HEX.test(v)) throw new Error(`Invalid color for ${k}: "${v}" (expected #RRGGBB).`);
+  // Iterate only the KNOWN branding keys, not whatever the incoming/stored blob
+  // happens to carry. A previously-stored branding row may still hold a legacy
+  // key that's since been removed (e.g. courtHeaderColor:"" after that feature
+  // moved per-court) — validating it as a color would throw "Invalid color …".
+  // Building a clean object from DEFAULT_BRANDING's keys both skips those and
+  // PURGES them from storage on the next save.
+  const clean = {} as BrandingSettings;
+  for (const key of Object.keys(DEFAULT_BRANDING) as (keyof BrandingSettings)[]) {
+    const v = (input[key] ?? DEFAULT_BRANDING[key]) as string;
+    if (key === "logoUrl") {
+      clean.logoUrl = v;
+      continue;
+    }
+    if (typeof v !== "string" || !HEX.test(v)) throw new Error(`Invalid color for ${key}: "${v}" (expected #RRGGBB).`);
+    (clean[key] as string) = v;
   }
-  assertInlineImageOk("Logo", input.logoUrl);
-  await saveSettingKey(tenantId, "branding", input);
+  assertInlineImageOk("Logo", clean.logoUrl);
+  await saveSettingKey(tenantId, "branding", clean);
   // Mirror the logo to Tenant.logoUrl so the customer header / resolveTenant
   // pick it up without a second settings read.
-  await withTenant(tenantId, (tx) => tx.tenant.update({ where: { id: tenantId }, data: { logoUrl: input.logoUrl || null, primaryColor: input.primary, accentColor: input.secondary } }));
+  await withTenant(tenantId, (tx) => tx.tenant.update({ where: { id: tenantId }, data: { logoUrl: clean.logoUrl || null, primaryColor: clean.primary, accentColor: clean.secondary } }));
 }
 
 export async function resetBrandingSettings(tenantId: string) {
