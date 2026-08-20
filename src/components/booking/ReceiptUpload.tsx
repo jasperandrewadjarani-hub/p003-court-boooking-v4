@@ -61,8 +61,6 @@ export function ReceiptUpload({
     }
   }
 
-  const linkStyle: React.CSSProperties = { background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 12, padding: 0, color: "inherit", display: "inline-flex" };
-
   return (
     <div>
       {!hasReceipt ? (
@@ -71,14 +69,14 @@ export function ReceiptUpload({
           <input type="file" accept="image/*,application/pdf" onChange={onFileSelected} disabled={busy} />
         </>
       ) : (
-        <div className="receipt-state uploaded">
-          ✓ Receipt uploaded
-          <div style={{ display: "flex", gap: 14, marginTop: 6 }}>
-            <label style={linkStyle}>
-              Change
+        <div>
+          <span className="receipt-state uploaded">✓ Receipt uploaded</span>
+          <div className="receipt-actions">
+            <label className="receipt-link">
+              Change receipt
               <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={onFileSelected} disabled={busy} />
             </label>
-            <button type="button" style={linkStyle} onClick={remove} disabled={busy}>
+            <button type="button" className="receipt-link" onClick={remove} disabled={busy}>
               Remove
             </button>
           </div>

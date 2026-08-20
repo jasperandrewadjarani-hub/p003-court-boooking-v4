@@ -221,8 +221,8 @@ export function MyBookingsPanel({ currency }: { currency: string }) {
               return (
                 <div style={{ margin: "0 10px 10px" }}>
                   {needsPayment && !open && (
-                    <button className="btn block" onClick={() => setPayOpenId(group.id)}>
-                      Payment not made — Make Payment Now
+                    <button className="btn block pay-warning" onClick={() => setPayOpenId(group.id)}>
+                      ⚠ Payment Not Made — Make Payment Now!
                     </button>
                   )}
                   {canManagePayment && !open && (

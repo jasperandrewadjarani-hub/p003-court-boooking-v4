@@ -270,6 +270,14 @@ header.hud {
 .btn.danger { border-color: var(--accent-magenta); color: var(--accent-magenta); }
 .btn.danger:hover { background: var(--accent-magenta); color: var(--bg-void); }
 .btn.block { width: 100%; }
+/* Bright-red filled warning CTA (unpaid booking "make payment now"). Wraps on
+   narrow screens so the longer warning text stays readable on mobile. */
+.btn.pay-warning { background: #E5312B; border-color: #E5312B; color: #fff; white-space: normal; }
+.btn.pay-warning:hover { background: #FF3B30; border-color: #FF3B30; color: #fff; box-shadow: 0 0 20px rgba(229, 49, 43, .5); }
+/* Change/Remove receipt actions row — evenly spaced, baseline-aligned links. */
+.receipt-actions { display: flex; gap: 20px; align-items: center; margin-top: 8px; }
+.receipt-actions .receipt-link { background: none; border: none; padding: 0; cursor: pointer; color: inherit; font-family: var(--font-mono); font-size: 12px; text-decoration: underline; display: inline-flex; align-items: center; }
+.receipt-actions .receipt-link:disabled { opacity: .5; cursor: default; }
 
 /* -------------------------------- Forms ----------------------------------*/
 label { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 6px; }
