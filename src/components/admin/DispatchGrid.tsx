@@ -325,8 +325,8 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
                     {slot.state === "vacant" ? (
                       <>
                         <span className="tile-open-line">
-                          <strong>{isSelected ? "Selected Slot" : "Open Slot"}</strong>
-                          <em>{isSelected ? "Selected" : "Book →"}</em>
+                          <strong>{isSelected ? "Selected Slot" : "Available"}</strong>
+                          <em>{isSelected ? "Selected" : ""}</em>
                         </span>
                         <span className="tile-open-date">{formatDateLabel(dateKey)}</span>
                         <span className="tile-open-time">{formatClock(slot.start)} - {formatClock(slot.end)}</span>

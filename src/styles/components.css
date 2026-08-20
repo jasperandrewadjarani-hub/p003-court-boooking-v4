@@ -119,7 +119,10 @@ header.hud {
   align-items: center;
   gap: 10px;
 }
-.panel__title::before { content: ''; width: 8px; height: 8px; background: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan); border-radius: 1px; }
+.panel__title::before { content: ''; width: 8px; height: 8px; background: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan); border-radius: 1px; flex: 0 0 auto; }
+/* Customer "Court Grid — <date>" heading, bumped up per customer feedback. */
+.grid-panel-wide .panel__title { font-size: 20px; letter-spacing: 1.5px; }
+.grid-panel-wide .panel__title .mono { font-size: 15px; }
 
 /* --------------------------- Date selector ------------------------------- */
 .date-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
@@ -312,7 +315,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, .date-chip:focu
 .spinner { width: 16px; height: 16px; border: 2px solid var(--line-grid); border-top-color: var(--accent-optic); border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .tabs { display: flex; gap: 2px; margin-bottom: 16px; }
-.tab { flex: 1; text-align: center; padding: 10px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1px; font-size: 12px; background: var(--bg-raised); color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; }
+.tab { flex: 1; text-align: center; padding: 14px 10px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1px; font-size: 17px; font-weight: 600; background: var(--bg-raised); color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; }
 .tab.active { color: var(--accent-optic); border-bottom-color: var(--accent-optic); }
 .my-booking-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line-grid); font-family: var(--font-mono); font-size: 12px; }
 .status-pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
