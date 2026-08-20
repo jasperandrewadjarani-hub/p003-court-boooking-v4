@@ -13,7 +13,7 @@ interface CourtOption {
 export function PricingManager({ initialRows, courts }: { initialRows: PriceMatrixRowWithCourt[]; courts: CourtOption[] }) {
   const EMPTY = {
     courtId: courts[0]?.id ?? "",
-    dayType: "weekday" as "weekday" | "weekend",
+    dayType: "all" as "weekday" | "weekend" | "all",
     startTime: "06:00",
     endTime: "17:00",
     pricePerHourMinor: "",
@@ -30,7 +30,7 @@ export function PricingManager({ initialRows, courts }: { initialRows: PriceMatr
 
   function edit(row: PriceMatrixRowWithCourt) {
     setEditingId(row.id);
-    setForm({ courtId: row.courtId ?? "", dayType: row.dayType as "weekday" | "weekend", startTime: row.startTime, endTime: row.endTime, pricePerHourMinor: String(row.pricePerHourMinor / 100) });
+    setForm({ courtId: row.courtId ?? "", dayType: row.dayType as "weekday" | "weekend" | "all", startTime: row.startTime, endTime: row.endTime, pricePerHourMinor: String(row.pricePerHourMinor / 100) });
   }
 
   function clearForm() {
@@ -71,7 +71,7 @@ export function PricingManager({ initialRows, courts }: { initialRows: PriceMatr
         <h2>Price Matrix</h2>
       </div>
       <p className="dim mono" style={{ fontSize: 11 }}>
-        Each rule prices ONE court for a day type + time window, so courts can be priced individually (surface, VIP, etc.). A court&apos;s &quot;Base Rate/Hr&quot; is only used as a fallback when no rule matches that court + day type + time.
+        Each rule prices ONE court for a day type + time window, so courts can be priced individually (surface, VIP, etc.). Use <strong>All Days</strong> when weekday and weekend rates are the same; a specific Weekday/Weekend rule overrides an All Days rule where they overlap. A court&apos;s &quot;Base Rate/Hr&quot; is the fallback when no rule matches.
       </p>
       <div className="panel">
         <div className="panel__title">{editingId ? "Edit Rule" : "Add Rule"}</div>
@@ -89,7 +89,8 @@ export function PricingManager({ initialRows, courts }: { initialRows: PriceMatr
           </div>
           <div>
             <label>Day Type</label>
-            <select value={form.dayType} onChange={(e) => setForm({ ...form, dayType: e.target.value as "weekday" | "weekend" })}>
+            <select value={form.dayType} onChange={(e) => setForm({ ...form, dayType: e.target.value as "weekday" | "weekend" | "all" })}>
+              <option value="all">All Days</option>
               <option value="weekday">Weekday</option>
               <option value="weekend">Weekend</option>
             </select>
@@ -132,7 +133,7 @@ export function PricingManager({ initialRows, courts }: { initialRows: PriceMatr
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{r.courtName}</td>
-                <td>{r.dayType}</td>
+                <td>{r.dayType === "all" ? "All Days" : r.dayType}</td>
                 <td>{r.startTime}</td>
                 <td>{r.endTime}</td>
                 <td>{(r.pricePerHourMinor / 100).toFixed(2)}</td>

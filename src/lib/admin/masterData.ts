@@ -67,7 +67,7 @@ export async function reorderCourts(tenantId: string, orderedCourtIds: string[])
 
 export interface PriceMatrixInput {
   courtId: string;
-  dayType: "weekday" | "weekend";
+  dayType: "weekday" | "weekend" | "all";
   startTime: string;
   endTime: string;
   pricePerHourMinor: number;

@@ -16,7 +16,7 @@
 
 export interface PriceMatrixRuleInput {
   courtId: string; // per-court pricing — a rule applies to ONE court
-  dayType: "weekday" | "weekend";
+  dayType: "weekday" | "weekend" | "all"; // "all" = applies every day
   startTime: string; // "HH:MM", 24h
   endTime: string;
   pricePerHourMinor: number;
@@ -91,22 +91,31 @@ export function calculatePrice(input: PriceCalcInput): PriceCalcResult {
   const dayType: "weekday" | "weekend" | "holiday" = holiday ? "holiday" : isWeekend(input.date) ? "weekend" : "weekday";
   const fallbackDayType: "weekday" | "weekend" = isWeekend(input.date) ? "weekend" : "weekday";
 
-  // Every PriceMatrix rule for THIS COURT + day type whose window overlaps the
-  // requested slot, so a booking spanning e.g. 4:30pm-6pm can correctly blend an
-  // afternoon rate and an evening rate — same as v2, but now scoped per court.
+  // Every PriceMatrix rule for THIS COURT whose day type applies today and whose
+  // window overlaps the requested slot, so a booking spanning e.g. 4:30pm-6pm can
+  // correctly blend an afternoon and an evening rate — per court.
+  //
+  // dayType "all" applies on any day; a specific weekday/weekend rule takes
+  // PRECEDENCE over an "all" rule where they overlap, so an "all-day" default can
+  // be selectively overridden without deleting it. `specific` marks that priority.
   const matrixRows = input.priceMatrix
     .map((m) => ({
-      courtId: m.courtId,
       dayType: m.dayType,
+      specific: m.dayType !== "all",
       start: toMinutes(m.startTime),
       end: toMinutes(m.endTime),
       rate: m.pricePerHourMinor,
+      courtId: m.courtId,
     }))
     .filter((m) => {
-      const matchesDayType = m.dayType === dayType || (dayType === "holiday" && m.dayType === fallbackDayType);
+      const matchesDayType = m.dayType === "all" || m.dayType === dayType || (dayType === "holiday" && m.dayType === fallbackDayType);
       return matchesDayType && m.courtId === input.court.id && m.end > m.start;
     })
     .sort((a, b) => a.start - b.start);
+
+  const specificRows = matrixRows.filter((m) => m.specific);
+  const allRows = matrixRows.filter((m) => !m.specific);
+  const nextStartAfter = (rows: typeof matrixRows, cursor: number) => rows.reduce((min, m) => (m.start > cursor ? Math.min(min, m.start) : min), Infinity);
 
   const holidayMultiplier = holiday && holiday.rateMultiplier > 0 ? holiday.rateMultiplier : 1;
   const hasFlatRate = input.court.baseRateMinor !== null && input.court.baseRateMinor !== undefined;
@@ -116,9 +125,25 @@ export function calculatePrice(input: PriceCalcInput): PriceCalcResult {
   let cursor = startMin;
 
   while (cursor < endMin) {
-    const rule = matrixRows.find((m) => m.start <= cursor && cursor < m.end);
-    const nextRule = matrixRows.find((m) => m.start > cursor);
-    const segmentEnd = rule ? Math.min(endMin, rule.end) : Math.min(endMin, nextRule ? nextRule.start : endMin);
+    // A specific-day rule wins outright; else an "all"-day rule applies but is
+    // interrupted by any specific rule that starts later within this slot; else
+    // the court base rate covers the gap until the next rule of any kind.
+    const spec = specificRows.find((m) => m.start <= cursor && cursor < m.end);
+    let rule: (typeof matrixRows)[number] | undefined;
+    let segmentEnd: number;
+    if (spec) {
+      rule = spec;
+      segmentEnd = Math.min(endMin, spec.end);
+    } else {
+      const all = allRows.find((m) => m.start <= cursor && cursor < m.end);
+      if (all) {
+        rule = all;
+        segmentEnd = Math.min(endMin, all.end, nextStartAfter(specificRows, cursor));
+      } else {
+        rule = undefined;
+        segmentEnd = Math.min(endMin, nextStartAfter(matrixRows, cursor));
+      }
+    }
     if (!Number.isFinite(segmentEnd) || segmentEnd <= cursor) {
       throw new Error(`PriceMatrix contains an invalid time range for ${input.court.name} ${dayType}.`);
     }

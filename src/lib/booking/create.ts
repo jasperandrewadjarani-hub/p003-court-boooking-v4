@@ -340,7 +340,7 @@ export async function priceCart(
       .filter((p) => p.courtId)
       .map((p) => ({
         courtId: p.courtId as string,
-        dayType: p.dayType as "weekday" | "weekend",
+        dayType: p.dayType as "weekday" | "weekend" | "all",
         startTime: p.startTime,
         endTime: p.endTime,
         pricePerHourMinor: p.pricePerHourMinor,
