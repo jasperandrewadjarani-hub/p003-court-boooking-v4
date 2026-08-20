@@ -23,6 +23,10 @@ export async function uploadReceiptAction(bookingGroupId: string, fileBytes: Arr
       const group = await tx.bookingGroup.findUnique({ where: { id: bookingGroupId } });
       if (!group || group.customerId !== customer.id) throw new Error("Booking not found.");
 
+      // Replace any prior receipt for this group — re-uploading is a "change",
+      // not a second attachment (the customer fixing a wrong photo).
+      await tx.receipt.deleteMany({ where: { tenantId: tenant.id, bookingGroupId } });
+
       await tx.receipt.create({
         data: {
           tenantId: tenant.id,
@@ -40,6 +44,32 @@ export async function uploadReceiptAction(bookingGroupId: string, fileBytes: Arr
       }
     });
 
+    return { ok: true as const };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Something went wrong.";
+    return { ok: false as const, error: message };
+  }
+}
+
+/** Customer removes their own just-uploaded receipt (a mistake fix). Reverts the
+ * booking to Unpaid if it was only Awaiting Verification because of this upload.
+ * Blocked once staff have actually confirmed the payment. */
+export async function removeReceiptAction(bookingGroupId: string) {
+  const tenant = await resolveTenant();
+  const customer = await getCurrentCustomer();
+  if (!customer) return { ok: false as const, error: "Your session expired. Please sign in again." };
+
+  try {
+    await withTenant(tenant.id, async (tx) => {
+      const group = await tx.bookingGroup.findUnique({ where: { id: bookingGroupId } });
+      if (!group || group.customerId !== customer.id) throw new Error("Booking not found.");
+      if (group.paymentStatus === "paid") throw new Error("Payment has already been confirmed — contact the court managers to make changes.");
+
+      await tx.receipt.deleteMany({ where: { tenantId: tenant.id, bookingGroupId } });
+      if (group.paymentStatus === "awaiting_verification") {
+        await tx.bookingGroup.update({ where: { id: bookingGroupId }, data: { paymentStatus: "unpaid" } });
+      }
+    });
     return { ok: true as const };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Something went wrong.";

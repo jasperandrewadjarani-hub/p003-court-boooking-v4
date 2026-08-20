@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { fetchMyBookingsAction, cancelMyBookingAction } from "@/app/actions";
 import { loginCustomer } from "@/lib/auth/customerAuth";
+import { QrCarousel } from "@/components/booking/QrCarousel";
+import { ReceiptUpload } from "@/components/booking/ReceiptUpload";
 import type { MyBookingGroup } from "@/lib/booking/customerBookings";
 
 function formatTime(hhmm: string): string {
@@ -62,6 +64,7 @@ export function MyBookingsPanel({ currency }: { currency: string }) {
   const [dateTo, setDateTo] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
+  const [payOpenId, setPayOpenId] = useState<string | null>(null); // which booking's payment panel is expanded
 
   function refresh() {
     startTransition(async () => {
@@ -208,6 +211,47 @@ export function MyBookingsPanel({ currency }: { currency: string }) {
                 {currency} {(group.totalMinor / 100).toFixed(2)}
               </strong>
             </div>
+
+            {(() => {
+              const active = group.status === "reserved" || group.status === "confirmed";
+              const needsPayment = active && group.paymentStatus === "unpaid" && !group.hasReceipt;
+              const canManagePayment = active && group.paymentStatus === "awaiting_verification";
+              if (!needsPayment && !canManagePayment) return null;
+              const open = payOpenId === group.id;
+              return (
+                <div style={{ margin: "0 10px 10px" }}>
+                  {needsPayment && !open && (
+                    <button className="btn block" onClick={() => setPayOpenId(group.id)}>
+                      Payment not made — Make Payment Now
+                    </button>
+                  )}
+                  {canManagePayment && !open && (
+                    <button className="btn secondary block" onClick={() => setPayOpenId(group.id)}>
+                      Manage Payment / Receipt
+                    </button>
+                  )}
+                  {open && (
+                    <div className="payment-box" style={{ marginTop: 4 }}>
+                      <div className="mono dim" style={{ fontSize: 11, textTransform: "uppercase" }}>
+                        Pay {currency} {(group.totalMinor / 100).toFixed(2)} then upload your receipt
+                      </div>
+                      <QrCarousel />
+                      <div style={{ marginTop: 10 }}>
+                        <ReceiptUpload
+                          bookingGroupId={group.id}
+                          initialHasReceipt={group.hasReceipt}
+                          onChanged={() => refresh()}
+                        />
+                      </div>
+                      <button className="btn secondary" style={{ marginTop: 10 }} onClick={() => setPayOpenId(null)}>
+                        Close
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {(group.status === "reserved" || group.status === "confirmed") && (
               <button className="btn danger" style={{ margin: 10 }} onClick={() => cancel(group.id)} disabled={isPending}>
                 Cancel Booking

@@ -30,7 +30,7 @@ export default async function AdminDashboardPage() {
         <h2>Dashboard</h2>
       </div>
 
-      <details className="dashboard-collapsible dashboard-stats" open>
+      <details className="dashboard-collapsible dashboard-stats">
         <summary>
           <span className="collapsed-label">Show Stats</span>
           <span className="expanded-label">Hide Stats</span>
