@@ -57,10 +57,13 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
     await sweepLapsedBookings(tx, tenantId, rules);
 
     const where: any = { tenantId };
+    // Filter by the booking's PLAY date (the date shown on each row), not its
+    // creation time — a group matches if any of its bookings fall in the range.
     if (filters.dateFrom || filters.dateTo) {
-      where.createdAt = {};
-      if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom + "T00:00:00.000Z");
-      if (filters.dateTo) where.createdAt.lt = new Date(filters.dateTo + "T23:59:59.999Z");
+      const localDate: any = {};
+      if (filters.dateFrom) localDate.gte = new Date(filters.dateFrom + "T00:00:00.000Z");
+      if (filters.dateTo) localDate.lte = new Date(filters.dateTo + "T00:00:00.000Z");
+      where.bookings = { some: { localDate } };
     }
     if (filters.status) where.status = filters.status;
     if (filters.search) {

@@ -19,16 +19,24 @@ const STATUS_OPTIONS = ["", "reserved", "confirmed", "cancelled", "lapsed"];
 
 export function BookingsTable({ initialResult, currency }: { initialResult: PagedBookings; currency: string }) {
   const [result, setResult] = useState(initialResult);
+  const [dateFrom, setDateFrom] = useState(""); // empty = all dates
+  const [dateTo, setDateTo] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminBookingGroup | null>(null);
+  const [rangeError, setRangeError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function fetchPage(targetPage: number) {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setRangeError('"From" date must be on or before the "To" date.');
+      return;
+    }
+    setRangeError(null);
     startTransition(async () => {
-      const r = await listBookingsAction({ status: status || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
+      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
       setResult(r);
       setPage(targetPage);
     });
@@ -45,7 +53,7 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
     const id = setInterval(() => fetchPage(page), POLL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, search, page]);
+  }, [dateFrom, dateTo, status, search, page]);
 
   const bookings = result.items;
   const totalPages = Math.max(1, Math.ceil(result.totalCount / result.pageSize));
@@ -59,6 +67,14 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
       </div>
       <div className="panel">
         <div className="admin-toolbar">
+          <div className="field">
+            <label>From (booking date)</label>
+            <input type="date" className="input-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>To</label>
+            <input type="date" className="input-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          </div>
           <div className="field">
             <label>Status</label>
             <select className="select-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -76,7 +92,26 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
           <button className="btn secondary" onClick={applyFilters} disabled={isPending}>
             Filter
           </button>
+          <button
+            className="btn secondary"
+            onClick={() => {
+              setDateFrom("");
+              setDateTo("");
+              setStatus("");
+              setSearch("");
+              setRangeError(null);
+              startTransition(async () => {
+                const r = await listBookingsAction({ page: 1, pageSize: PAGE_SIZE });
+                setResult(r);
+                setPage(1);
+              });
+            }}
+            disabled={isPending}
+          >
+            Clear
+          </button>
         </div>
+        {rangeError && <div className="field-warning">{rangeError}</div>}
         <p className="dim mono" style={{ fontSize: 11 }}>
           Click a booking row to expand its courts/time slots. A booking made across multiple courts shares one Booking ID.
         </p>
