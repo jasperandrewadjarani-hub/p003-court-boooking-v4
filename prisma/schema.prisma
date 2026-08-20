@@ -330,9 +330,10 @@ model Court {
   // and admin grids. Null/empty = each grid's own default accent color.
   headerColor     String?     @map("header_color")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bookings     Booking[]
-  blockedSlots BlockedSlot[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings        Booking[]
+  blockedSlots    BlockedSlot[]
+  priceMatrixRows PriceMatrixRow[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -361,15 +362,21 @@ model Membership {
 model PriceMatrixRow {
   id               String  @id @default(uuid()) @db.Uuid
   tenantId         String  @map("tenant_id") @db.Uuid
+  // Per-court pricing: a rule applies to ONE specific court (2026-08-20 — clients
+  // price courts individually by surface/VIP feel, not just indoor/outdoor).
+  // courtType is retained (nullable) only as a historical column; the engine
+  // matches by courtId now.
+  courtId          String? @map("court_id") @db.Uuid
   dayType          String  @map("day_type") // "weekday" | "weekend"
   startTime        String  @map("start_time") // "HH:MM", 24h
   endTime          String  @map("end_time")
-  courtType        String  @map("court_type") // "indoor" | "outdoor"
+  courtType        String? @map("court_type") // legacy: "indoor" | "outdoor"
   pricePerHourMinor Int    @map("price_per_hour_minor")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court  Court? @relation(fields: [courtId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId, dayType, courtType])
+  @@index([tenantId, courtId, dayType])
   @@map("price_matrix")
 }
 

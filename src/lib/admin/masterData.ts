@@ -66,20 +66,44 @@ export async function reorderCourts(tenantId: string, orderedCourtIds: string[])
 // ------------------------------- Price Matrix ---------------------------------
 
 export interface PriceMatrixInput {
+  courtId: string;
   dayType: "weekday" | "weekend";
   startTime: string;
   endTime: string;
-  courtType: "indoor" | "outdoor";
   pricePerHourMinor: number;
 }
 
-export async function listPriceMatrix(tenantId: string) {
-  return withTenant(tenantId, (tx) => tx.priceMatrixRow.findMany({ where: { tenantId }, orderBy: [{ dayType: "asc" }, { courtType: "asc" }, { startTime: "asc" }] }));
+export interface PriceMatrixRowWithCourt {
+  id: string;
+  courtId: string | null;
+  dayType: string;
+  startTime: string;
+  endTime: string;
+  pricePerHourMinor: number;
+  courtName: string;
+  courtCode: string;
+}
+
+export async function listPriceMatrix(tenantId: string): Promise<PriceMatrixRowWithCourt[]> {
+  const rows = await withTenant(tenantId, (tx) =>
+    tx.priceMatrixRow.findMany({
+      where: { tenantId },
+      orderBy: [{ court: { sortOrder: "asc" } }, { dayType: "asc" }, { startTime: "asc" }],
+      include: { court: { select: { name: true, code: true } } },
+    })
+  );
+  return rows.map((r) => ({
+    id: r.id, courtId: r.courtId, dayType: r.dayType, startTime: r.startTime, endTime: r.endTime,
+    pricePerHourMinor: r.pricePerHourMinor,
+    courtName: r.court?.name ?? "—", courtCode: r.court?.code ?? "—",
+  }));
 }
 
 export async function savePriceMatrixRow(tenantId: string, input: PriceMatrixInput, existingId?: string) {
   return withTenant(tenantId, (tx) =>
-    existingId ? tx.priceMatrixRow.update({ where: { id: existingId }, data: input }) : tx.priceMatrixRow.create({ data: { tenantId, ...input } })
+    existingId
+      ? tx.priceMatrixRow.update({ where: { id: existingId }, data: input })
+      : tx.priceMatrixRow.create({ data: { tenantId, ...input } })
   );
 }
 

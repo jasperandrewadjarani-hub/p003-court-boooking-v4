@@ -2,11 +2,22 @@
 
 import { useState, useTransition } from "react";
 import { listPriceMatrixAction, savePriceMatrixRowAction, deletePriceMatrixRowAction } from "@/app/admin/actions";
-import type { PriceMatrixRow } from "@/generated/prisma/client";
+import type { PriceMatrixRowWithCourt } from "@/lib/admin/masterData";
 
-const EMPTY = { dayType: "weekday" as "weekday" | "weekend", startTime: "06:00", endTime: "17:00", courtType: "indoor" as "indoor" | "outdoor", pricePerHourMinor: "" };
+interface CourtOption {
+  id: string;
+  code: string;
+  name: string;
+}
 
-export function PricingManager({ initialRows }: { initialRows: PriceMatrixRow[] }) {
+export function PricingManager({ initialRows, courts }: { initialRows: PriceMatrixRowWithCourt[]; courts: CourtOption[] }) {
+  const EMPTY = {
+    courtId: courts[0]?.id ?? "",
+    dayType: "weekday" as "weekday" | "weekend",
+    startTime: "06:00",
+    endTime: "17:00",
+    pricePerHourMinor: "",
+  };
   const [rows, setRows] = useState(initialRows);
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -17,9 +28,9 @@ export function PricingManager({ initialRows }: { initialRows: PriceMatrixRow[] 
     startTransition(async () => setRows(await listPriceMatrixAction()));
   }
 
-  function edit(row: PriceMatrixRow) {
+  function edit(row: PriceMatrixRowWithCourt) {
     setEditingId(row.id);
-    setForm({ dayType: row.dayType as any, startTime: row.startTime, endTime: row.endTime, courtType: row.courtType as any, pricePerHourMinor: String(row.pricePerHourMinor / 100) });
+    setForm({ courtId: row.courtId ?? "", dayType: row.dayType as "weekday" | "weekend", startTime: row.startTime, endTime: row.endTime, pricePerHourMinor: String(row.pricePerHourMinor / 100) });
   }
 
   function clearForm() {
@@ -29,12 +40,16 @@ export function PricingManager({ initialRows }: { initialRows: PriceMatrixRow[] 
 
   async function save() {
     setError(null);
+    if (!form.courtId) {
+      setError("Choose a court.");
+      return;
+    }
     if (!form.pricePerHourMinor) {
       setError("Enter a price.");
       return;
     }
     const res = await savePriceMatrixRowAction(
-      { dayType: form.dayType, startTime: form.startTime, endTime: form.endTime, courtType: form.courtType, pricePerHourMinor: Math.round(Number(form.pricePerHourMinor) * 100) },
+      { courtId: form.courtId, dayType: form.dayType, startTime: form.startTime, endTime: form.endTime, pricePerHourMinor: Math.round(Number(form.pricePerHourMinor) * 100) },
       editingId ?? undefined
     );
     if (res.ok) {
@@ -56,14 +71,25 @@ export function PricingManager({ initialRows }: { initialRows: PriceMatrixRow[] 
         <h2>Price Matrix</h2>
       </div>
       <p className="dim mono" style={{ fontSize: 11 }}>
-        Price Matrix rules always take priority. A court&apos;s &quot;Base Rate/Hr&quot; is only used as a fallback when no matrix rule matches its day type + Indoor/Outdoor type.
+        Each rule prices ONE court for a day type + time window, so courts can be priced individually (surface, VIP, etc.). A court&apos;s &quot;Base Rate/Hr&quot; is only used as a fallback when no rule matches that court + day type + time.
       </p>
       <div className="panel">
         <div className="panel__title">{editingId ? "Edit Rule" : "Add Rule"}</div>
         <div className="inline-form">
           <div>
+            <label>Court</label>
+            <select value={form.courtId} onChange={(e) => setForm({ ...form, courtId: e.target.value })}>
+              {courts.length === 0 && <option value="">No courts</option>}
+              {courts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.code})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label>Day Type</label>
-            <select value={form.dayType} onChange={(e) => setForm({ ...form, dayType: e.target.value as any })}>
+            <select value={form.dayType} onChange={(e) => setForm({ ...form, dayType: e.target.value as "weekday" | "weekend" })}>
               <option value="weekday">Weekday</option>
               <option value="weekend">Weekend</option>
             </select>
@@ -75,13 +101,6 @@ export function PricingManager({ initialRows }: { initialRows: PriceMatrixRow[] 
           <div>
             <label>End</label>
             <input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
-          </div>
-          <div>
-            <label>Court Type</label>
-            <select value={form.courtType} onChange={(e) => setForm({ ...form, courtType: e.target.value as any })}>
-              <option value="indoor">Indoor</option>
-              <option value="outdoor">Outdoor</option>
-            </select>
           </div>
           <div>
             <label>Price / Hour</label>
@@ -101,10 +120,10 @@ export function PricingManager({ initialRows }: { initialRows: PriceMatrixRow[] 
         <table className="admin-table">
           <thead>
             <tr>
+              <th>Court</th>
               <th>Day Type</th>
               <th>Start</th>
               <th>End</th>
-              <th>Court Type</th>
               <th>Price/Hr</th>
               <th>Actions</th>
             </tr>
@@ -112,10 +131,10 @@ export function PricingManager({ initialRows }: { initialRows: PriceMatrixRow[] 
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
+                <td>{r.courtName}</td>
                 <td>{r.dayType}</td>
                 <td>{r.startTime}</td>
                 <td>{r.endTime}</td>
-                <td>{r.courtType}</td>
                 <td>{(r.pricePerHourMinor / 100).toFixed(2)}</td>
                 <td className="action-cell">
                   <button className="btn secondary" onClick={() => edit(r)}>

@@ -15,14 +15,15 @@
  */
 
 export interface PriceMatrixRuleInput {
+  courtId: string; // per-court pricing — a rule applies to ONE court
   dayType: "weekday" | "weekend";
   startTime: string; // "HH:MM", 24h
   endTime: string;
-  courtType: "indoor" | "outdoor";
   pricePerHourMinor: number;
 }
 
 export interface CourtPricingInput {
+  id: string;
   indoor: boolean;
   baseRateMinor: number | null;
   name: string;
@@ -86,25 +87,24 @@ export function calculatePrice(input: PriceCalcInput): PriceCalcResult {
   }
   const hours = (endMin - startMin) / 60;
 
-  const courtType: "indoor" | "outdoor" = input.court.indoor ? "indoor" : "outdoor";
   const holiday = input.holidays.find((h) => h.date === input.date);
   const dayType: "weekday" | "weekend" | "holiday" = holiday ? "holiday" : isWeekend(input.date) ? "weekend" : "weekday";
   const fallbackDayType: "weekday" | "weekend" = isWeekend(input.date) ? "weekend" : "weekday";
 
-  // Every PriceMatrix rule for this day type + court type whose window
-  // overlaps the requested slot, so a booking spanning e.g. 4:30pm-6pm can
-  // correctly blend an afternoon rate and an evening rate — same as v2.
+  // Every PriceMatrix rule for THIS COURT + day type whose window overlaps the
+  // requested slot, so a booking spanning e.g. 4:30pm-6pm can correctly blend an
+  // afternoon rate and an evening rate — same as v2, but now scoped per court.
   const matrixRows = input.priceMatrix
     .map((m) => ({
+      courtId: m.courtId,
       dayType: m.dayType,
-      courtType: m.courtType,
       start: toMinutes(m.startTime),
       end: toMinutes(m.endTime),
       rate: m.pricePerHourMinor,
     }))
     .filter((m) => {
       const matchesDayType = m.dayType === dayType || (dayType === "holiday" && m.dayType === fallbackDayType);
-      return matchesDayType && m.courtType === courtType && m.end > m.start;
+      return matchesDayType && m.courtId === input.court.id && m.end > m.start;
     })
     .sort((a, b) => a.start - b.start);
 
@@ -120,7 +120,7 @@ export function calculatePrice(input: PriceCalcInput): PriceCalcResult {
     const nextRule = matrixRows.find((m) => m.start > cursor);
     const segmentEnd = rule ? Math.min(endMin, rule.end) : Math.min(endMin, nextRule ? nextRule.start : endMin);
     if (!Number.isFinite(segmentEnd) || segmentEnd <= cursor) {
-      throw new Error(`PriceMatrix contains an invalid time range for ${courtType} ${dayType}.`);
+      throw new Error(`PriceMatrix contains an invalid time range for ${input.court.name} ${dayType}.`);
     }
     const rawRate = rule ? rule.rate : hasFlatRate ? input.court.baseRateMinor! : NaN;
     if (!Number.isFinite(rawRate)) {

@@ -161,9 +161,17 @@ async function seedTenant(input: {
     });
   }
 
+  // Per-court pricing: expand each seed rule (still authored by indoor/outdoor
+  // for brevity) into one row per matching court, since the engine now prices
+  // by courtId.
+  const seededCourts = await prisma.court.findMany({ where: { tenantId: tenant.id }, select: { id: true, indoor: true } });
   await prisma.priceMatrixRow.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.priceMatrixRow.createMany({
-    data: input.priceMatrix.map((row) => ({ tenantId: tenant.id, ...row })),
+    data: input.priceMatrix.flatMap((row) =>
+      seededCourts
+        .filter((c) => c.indoor === (row.courtType === "indoor"))
+        .map((c) => ({ tenantId: tenant.id, courtId: c.id, dayType: row.dayType, startTime: row.startTime, endTime: row.endTime, pricePerHourMinor: row.pricePerHourMinor }))
+    ),
   });
 
   for (const membership of input.memberships) {

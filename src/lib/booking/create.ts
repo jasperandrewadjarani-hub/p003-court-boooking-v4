@@ -332,17 +332,19 @@ export async function priceCart(
 
   const cartItems = items.map((item) => {
     const court = courtsById.get(item.courtId)!;
-    return { court: { indoor: court.indoor, baseRateMinor: court.baseRateMinor, name: court.name }, startTime: item.startTime, endTime: item.endTime };
+    return { court: { id: court.id, indoor: court.indoor, baseRateMinor: court.baseRateMinor, name: court.name }, startTime: item.startTime, endTime: item.endTime };
   });
 
   const sharedBase = {
-    priceMatrix: priceInputs.priceMatrix.map((p) => ({
-      dayType: p.dayType as "weekday" | "weekend",
-      startTime: p.startTime,
-      endTime: p.endTime,
-      courtType: p.courtType as "indoor" | "outdoor",
-      pricePerHourMinor: p.pricePerHourMinor,
-    })),
+    priceMatrix: priceInputs.priceMatrix
+      .filter((p) => p.courtId)
+      .map((p) => ({
+        courtId: p.courtId as string,
+        dayType: p.dayType as "weekday" | "weekend",
+        startTime: p.startTime,
+        endTime: p.endTime,
+        pricePerHourMinor: p.pricePerHourMinor,
+      })),
     holidays: priceInputs.holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name, rateMultiplier: Number(h.rateMultiplier) })),
     memberships: priceInputs.memberships.map((m) => ({ name: m.name, discountPercent: Number(m.discountPercent), active: m.active })),
     date: dateKey,
