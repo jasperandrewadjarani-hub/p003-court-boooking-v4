@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { uploadReceiptAction, removeReceiptAction } from "@/lib/booking/receipts";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -20,6 +20,7 @@ export function ReceiptUpload({
   const [hasReceipt, setHasReceipt] = useState(initialHasReceipt);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -71,11 +72,11 @@ export function ReceiptUpload({
       ) : (
         <div>
           <span className="receipt-state uploaded">✓ Receipt uploaded</span>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={onFileSelected} disabled={busy} />
           <div className="receipt-actions">
-            <label className="receipt-link">
+            <button type="button" className="receipt-link" onClick={() => fileRef.current?.click()} disabled={busy}>
               Change receipt
-              <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={onFileSelected} disabled={busy} />
-            </label>
+            </button>
             <button type="button" className="receipt-link" onClick={remove} disabled={busy}>
               Remove
             </button>
