@@ -6,6 +6,7 @@ import { beginCustomerBookingAuth } from "@/lib/auth/customerAuth";
 import type { AvailabilityGrid } from "@/lib/booking/availability";
 import type { MembershipOption } from "@/lib/booking/memberships";
 import { CourtGrid, slotKey } from "@/components/booking/CourtGrid";
+import { MonthCalendar } from "@/components/booking/MonthCalendar";
 import { CartBar, type CartItem } from "@/components/booking/CartBar";
 import { AccountModal } from "@/components/booking/AccountModal";
 import { MyBookingsPanel } from "@/components/booking/MyBookingsPanel";
@@ -414,15 +415,7 @@ export function BookingPage({
               </div>
               <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <label style={{ margin: 0, whiteSpace: "nowrap" }}>Or pick any date</label>
-                <input
-                  type="date"
-                  value={dateKey}
-                  min={todayKey(0)}
-                  max={maxPickDate}
-                  style={{ maxWidth: 200 }}
-                  onChange={(e) => e.target.value && loadDate(e.target.value)}
-                />
-                <span className="mono dim" style={{ fontSize: 11 }}>{formatDateShort(dateKey)}</span>
+                <MonthCalendar value={dateKey} min={todayKey(0)} max={maxPickDate} onSelect={(k) => loadDate(k)} />
               </div>
             </div>
 

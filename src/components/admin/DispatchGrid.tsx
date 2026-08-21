@@ -280,7 +280,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
         >
           <div className="dispatch-time-head" style={{ gridColumn: 1, gridRow: 1 }}><span>Time</span></div>
           {courtsV.map((c, ci) => (
-            <div className="dispatch-court-head" key={c.courtId} style={{ gridColumn: ci + 2, gridRow: 1, ...(c.headerColor ? { color: c.headerColor } : {}) }}>
+            <div className="dispatch-court-head" key={c.courtId} style={{ gridColumn: ci + 2, gridRow: 1, ...(c.headerColor ? { borderTop: `3px solid ${c.headerColor}` } : {}) }}>
               {c.courtName}
               {c.description && <span>{c.description}</span>}
             </div>
