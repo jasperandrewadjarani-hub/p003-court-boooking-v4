@@ -81,7 +81,7 @@ export async function getAnalytics(tenantId: string, dateFrom: string, dateTo: s
           { bookings: { none: {} }, createdAt: { gte: rangeStart, lt: rangeEndExclusive } },
         ],
       },
-      include: { bookings: { include: { court: true } } },
+      include: { bookings: { include: { court: { omit: { imageUrl: true } } } } },
     });
 
     const groupsInRange = candidateGroups

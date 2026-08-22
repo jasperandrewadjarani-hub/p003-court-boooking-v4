@@ -74,7 +74,7 @@ export async function getRecentBookings(tenantId: string, take = 8): Promise<Rec
       take,
       include: {
         customer: true,
-        bookings: { include: { court: true }, orderBy: { startsAt: "asc" } },
+        bookings: { include: { court: { omit: { imageUrl: true } } }, orderBy: { startsAt: "asc" } },
       },
     });
 

@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   const groups = await withTenant(tenant.id, (tx) =>
     tx.bookingGroup.findMany({
       where: { tenantId: tenant.id, createdAt: { gte: new Date(dateFrom + "T00:00:00.000Z"), lt: new Date(dateTo + "T23:59:59.999Z") } },
-      include: { customer: true, bookings: { include: { court: true }, orderBy: { startsAt: "asc" } }, payments: true },
+      include: { customer: true, bookings: { include: { court: { omit: { imageUrl: true } } }, orderBy: { startsAt: "asc" } }, payments: true },
       orderBy: { createdAt: "desc" },
     })
   );

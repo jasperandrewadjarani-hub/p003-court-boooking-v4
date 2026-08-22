@@ -318,7 +318,7 @@ export async function priceCart(
 ) {
   const courtIds = [...new Set(items.map((i) => i.courtId))];
   const priceInputs = await withTenant(tenantId, async (tx) => {
-    const courts = await tx.court.findMany({ where: { tenantId, id: { in: courtIds } } });
+    const courts = await tx.court.findMany({ where: { tenantId, id: { in: courtIds } }, omit: { imageUrl: true } });
     const priceMatrix = await tx.priceMatrixRow.findMany({ where: { tenantId } });
     const holidays = await tx.holiday.findMany({ where: { tenantId } });
     const memberships = await tx.membership.findMany({ where: { tenantId } });

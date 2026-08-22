@@ -58,7 +58,10 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
   return withTenant(tenantId, async (tx) => {
     await sweepLapsedBookings(tx, tenantId, rules);
 
-    const courts = await tx.court.findMany({ where: { tenantId, status: { not: "closed" } }, orderBy: { sortOrder: "asc" } });
+    // OMIT imageUrl — the ~200-260 KB per-court photo data-URI. This grid is
+    // polled every 20s and never shows court photos, so pulling the bytes here
+    // was a dominant Supabase-egress cost.
+    const courts = await tx.court.findMany({ where: { tenantId, status: { not: "closed" } }, orderBy: { sortOrder: "asc" }, omit: { imageUrl: true } });
 
     const dayDate = new Date(dateKey + "T00:00:00.000Z");
     const dayBookings = await tx.booking.findMany({

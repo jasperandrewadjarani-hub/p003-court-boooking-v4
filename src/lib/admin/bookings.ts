@@ -85,7 +85,7 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
         take: pageSize,
         include: {
           customer: { include: { user: true } },
-          bookings: { include: { court: true }, orderBy: { startsAt: "asc" } },
+          bookings: { include: { court: { omit: { imageUrl: true } } }, orderBy: { startsAt: "asc" } },
           receipts: { select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 },
         },
       }),
@@ -123,7 +123,7 @@ export async function getBookingGroupById(tenantId: string, id: string): Promise
       where: { tenantId, id },
       include: {
         customer: { include: { user: true } },
-        bookings: { include: { court: true }, orderBy: { startsAt: "asc" } },
+        bookings: { include: { court: { omit: { imageUrl: true } } }, orderBy: { startsAt: "asc" } },
         receipts: { select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 },
       },
     });
