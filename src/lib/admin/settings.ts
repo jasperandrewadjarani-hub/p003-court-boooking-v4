@@ -187,6 +187,11 @@ export interface BrandingSettings {
   lightOpenSlotFont: string;
   lightSelectedSlotFont: string;
   logoUrl: string;
+  // Optional per-tenant heading font. `headingFont` is a CSS family name that
+  // overrides --font-display; `headingFontUrl` is a stylesheet URL (Google
+  // Fonts) loaded in both shells. Empty = the app default (Rajdhani).
+  headingFont: string;
+  headingFontUrl: string;
 }
 
 export const DEFAULT_BRANDING: BrandingSettings = {
@@ -221,6 +226,8 @@ export const DEFAULT_BRANDING: BrandingSettings = {
   lightOpenSlotFont: "#5C8A00",
   lightSelectedSlotFont: "#0E1A12",
   logoUrl: "",
+  headingFont: "",
+  headingFontUrl: "",
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -239,8 +246,9 @@ export async function saveBrandingSettings(tenantId: string, input: BrandingSett
   const clean = {} as BrandingSettings;
   for (const key of Object.keys(DEFAULT_BRANDING) as (keyof BrandingSettings)[]) {
     const v = (input[key] ?? DEFAULT_BRANDING[key]) as string;
-    if (key === "logoUrl") {
-      clean.logoUrl = v;
+    // Non-color keys — stored verbatim, not HEX-validated.
+    if (key === "logoUrl" || key === "headingFont" || key === "headingFontUrl") {
+      (clean[key] as string) = v;
       continue;
     }
     if (typeof v !== "string" || !HEX.test(v)) throw new Error(`Invalid color for ${key}: "${v}" (expected #RRGGBB).`);
@@ -346,5 +354,8 @@ export function brandingToCss(b: BrandingSettings): string {
     `--open-slot-text:${b.lightOpenSlotFont}`,
     `--selected-slot-text:${b.lightSelectedSlotFont}`,
   ].join(";");
-  return `:root{${dark}}:root[data-theme="light"]{${light}}`;
+  // Optional per-tenant heading font — overrides --font-display globally (not
+  // per-theme). The stylesheet itself is <link>ed in the shells.
+  const font = b.headingFont ? `:root{--font-display:'${b.headingFont}',var(--font-body),system-ui,sans-serif}` : "";
+  return `:root{${dark}}:root[data-theme="light"]{${light}}${font}`;
 }

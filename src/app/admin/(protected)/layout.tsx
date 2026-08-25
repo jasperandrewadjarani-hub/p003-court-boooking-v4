@@ -21,6 +21,7 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
 
   return (
     <div className="admin-shell">
+      {branding.headingFontUrl && <link rel="stylesheet" href={branding.headingFontUrl} />}
       <style dangerouslySetInnerHTML={{ __html: brandingToCss(branding) }} />
       <AdminThemeToggle />
       <div className="admin-sidebar">

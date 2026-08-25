@@ -55,6 +55,9 @@ const BRANDING = {
   darkOpenSlotFont: "#C9A87F", darkSelectedSlotFont: "#FFFFFF",
   lightOpenSlotFont: "#6E4A2A", lightSelectedSlotFont: "#3A2012",
   logoUrl: "", // set below from the file
+  // Warm retro serif heading font to match the brand.
+  headingFont: "Fraunces",
+  headingFontUrl: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&display=swap",
 };
 
 const COURTS = [

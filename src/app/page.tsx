@@ -30,6 +30,7 @@ export default async function Home() {
 
     return (
       <>
+        {branding.headingFontUrl && <link rel="stylesheet" href={branding.headingFontUrl} />}
         <style dangerouslySetInnerHTML={{ __html: brandingToCss(branding) }} />
       <BookingPage
         tenant={{
