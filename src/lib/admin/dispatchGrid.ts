@@ -94,7 +94,7 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
         const block = dayBlocks.find((b) => {
           if (b.courtId !== court.id) return false;
           const bStart = toMinutes(formatUtcTime(b.startsAt));
-          const bEnd = toMinutes(formatUtcTime(b.endsAt));
+          const bEnd = endMinutesOfDay(bStart, formatUtcTime(b.endsAt));
           return slotStart < bEnd && slotEnd > bStart;
         });
         if (block) {
@@ -105,7 +105,7 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
         const match = dayBookings.find((b) => {
           if (b.courtId !== court.id) return false;
           const bStart = toMinutes(formatUtcTime(b.startsAt));
-          const bEnd = toMinutes(formatUtcTime(b.endsAt)) + b.turnoverBufferMinutes;
+          const bEnd = endMinutesOfDay(bStart, formatUtcTime(b.endsAt)) + b.turnoverBufferMinutes;
           return slotStart < bEnd && slotEnd > bStart;
         });
 
@@ -145,6 +145,15 @@ export async function getDispatchGrid(tenantId: string, dateKey: string): Promis
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
+}
+
+// A booking/block ending at (or wrapping past) midnight formats as "00:00" = 0,
+// which is <= its start. Clamp to 1440 (end of day) so its occupied hours are
+// detected on this day's grid — otherwise the slot shows vacant while its
+// block_range reserves it (the "shows open but can't book" bug).
+function endMinutesOfDay(startMin: number, endHHMM: string): number {
+  const e = toMinutes(endHHMM);
+  return e <= startMin ? 1440 : e;
 }
 
 function minutesToTimeStr(mins: number): string {

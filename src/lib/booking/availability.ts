@@ -158,7 +158,7 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
           dayBlocks.some((b) => {
             if (b.courtId !== court.id) return false;
             const bStart = toMinutes(formatLocalTime(b.startsAt));
-            const bEnd = toMinutes(formatLocalTime(b.endsAt));
+            const bEnd = endMinutesOfDay(bStart, formatLocalTime(b.endsAt));
             return slotStart < bEnd && slotEnd > bStart;
           })
         ) {
@@ -167,7 +167,7 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
           const overlapping = dayBookings.some((b) => {
             if (b.courtId !== court.id) return false;
             const bStart = toMinutes(formatLocalTime(b.startsAt));
-            const bEnd = toMinutes(formatLocalTime(b.endsAt)) + b.turnoverBufferMinutes;
+            const bEnd = endMinutesOfDay(bStart, formatLocalTime(b.endsAt)) + b.turnoverBufferMinutes;
             return slotStart < bEnd && slotEnd > bStart;
           });
           if (overlapping) status = "booked";
@@ -198,4 +198,14 @@ export async function getAvailabilityGrid(tenantId: string, dateKey: string): Pr
 // the tenant's tz is Phase 2 formal work, not this slice's scope.
 function formatLocalTime(d: Date): string {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+// A booking/block whose end is at (or wraps past) midnight formats as "00:00"
+// = 0 min, which is <= its start. Clamp such an end to 1440 (end of day) so the
+// hours it occupies THIS day are correctly detected as taken — otherwise the
+// slot shows "open" on the grid even though its block_range reserves it and the
+// booking transaction rejects it (the "selectable but already booked" bug).
+function endMinutesOfDay(startMin: number, endHHMM: string): number {
+  const e = toMinutes(endHHMM);
+  return e <= startMin ? 1440 : e;
 }
