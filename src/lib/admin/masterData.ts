@@ -175,7 +175,8 @@ export interface DiscountInput {
   code: string;
   discountType: "percentage" | "fixed_php" | "fixed_php_per_slot";
   discountValue: number;
-  maxAvailments: number; // 0 = unlimited
+  maxAvailments: number; // 0 = unlimited (caps number of bookings)
+  maxTotalDiscountMinor: number; // 0 = unlimited (total peso budget across all uses)
   active: boolean;
 }
 
@@ -195,6 +196,7 @@ export async function saveDiscount(tenantId: string, input: DiscountInput) {
         discountType: input.discountType,
         discountValue: input.discountValue,
         maxAvailments: input.maxAvailments,
+        maxTotalDiscountMinor: input.maxTotalDiscountMinor,
         active: input.active,
       },
       create: {
@@ -203,6 +205,7 @@ export async function saveDiscount(tenantId: string, input: DiscountInput) {
         discountType: input.discountType,
         discountValue: input.discountValue,
         maxAvailments: input.maxAvailments,
+        maxTotalDiscountMinor: input.maxTotalDiscountMinor,
         active: input.active,
       },
     })

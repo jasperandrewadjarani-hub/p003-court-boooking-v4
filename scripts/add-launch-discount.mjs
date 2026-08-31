@@ -25,7 +25,8 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const SLUG = "dink-and-dunk";
 const CODE = "LAUNCH100"; // customer-facing promo code (rename here if desired)
 const VALUE_MINOR = 10000; // PHP 100.00 per slot
-const MAX_AVAILMENTS = 50; // first 50 bookers
+const MAX_AVAILMENTS = 50; // first 50 bookings
+const MAX_TOTAL_DISCOUNT_MINOR = 500000; // PHP 5,000 total budget cap across all uses
 const COMMIT = process.argv.includes("--commit");
 
 async function main() {
@@ -38,7 +39,7 @@ async function main() {
 
     const existing = await prisma.discount.findFirst({ where: { tenantId: tid, code: CODE } });
     console.log(`Tenant: ${tenant.name}`);
-    console.log(`Promo:  ${CODE} — fixed_php_per_slot, PHP ${(VALUE_MINOR / 100).toFixed(2)}/slot, max ${MAX_AVAILMENTS} availments, active`);
+    console.log(`Promo:  ${CODE} — fixed_php_per_slot, PHP ${(VALUE_MINOR / 100).toFixed(2)}/slot, max ${MAX_AVAILMENTS} availments, budget PHP ${(MAX_TOTAL_DISCOUNT_MINOR / 100).toLocaleString()}, active`);
     console.log(existing ? `Existing row found (timesAvailed=${existing.timesAvailed}) — will UPDATE (usage count preserved).` : `No existing row — will CREATE.`);
 
     if (!COMMIT) {
@@ -50,12 +51,12 @@ async function main() {
     if (existing) {
       await prisma.discount.update({
         where: { id: existing.id },
-        data: { discountType: "fixed_php_per_slot", discountValue: VALUE_MINOR, maxAvailments: MAX_AVAILMENTS, active: true },
+        data: { discountType: "fixed_php_per_slot", discountValue: VALUE_MINOR, maxAvailments: MAX_AVAILMENTS, maxTotalDiscountMinor: MAX_TOTAL_DISCOUNT_MINOR, active: true },
       });
       console.log(`\nUpdated ${CODE}.`);
     } else {
       await prisma.discount.create({
-        data: { tenantId: tid, code: CODE, discountType: "fixed_php_per_slot", discountValue: VALUE_MINOR, maxAvailments: MAX_AVAILMENTS, active: true },
+        data: { tenantId: tid, code: CODE, discountType: "fixed_php_per_slot", discountValue: VALUE_MINOR, maxAvailments: MAX_AVAILMENTS, maxTotalDiscountMinor: MAX_TOTAL_DISCOUNT_MINOR, active: true },
       });
       console.log(`\nCreated ${CODE}.`);
     }

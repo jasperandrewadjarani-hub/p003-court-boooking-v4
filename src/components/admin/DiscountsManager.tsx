@@ -11,6 +11,8 @@ interface DiscountRow {
   discountType: DiscountType;
   discountValue: number;
   maxAvailments: number;
+  maxTotalDiscountMinor: number;
+  totalDiscountedMinor: number;
   timesAvailed: number;
   active: boolean;
 }
@@ -20,7 +22,7 @@ interface DiscountRow {
 const isPesoType = (t: DiscountType) => t === "fixed_php" || t === "fixed_php_per_slot";
 const typeLabel = (t: DiscountType) => (t === "percentage" ? "Percentage" : t === "fixed_php_per_slot" ? "PHP per Slot" : "Fixed PHP");
 
-const EMPTY = { code: "", discountType: "percentage" as DiscountType, discountValue: "0", maxAvailments: "0", active: true };
+const EMPTY = { code: "", discountType: "percentage" as DiscountType, discountValue: "0", maxAvailments: "0", maxTotalDiscount: "0", active: true };
 
 /** v3b "Discounts" sub-panel of the Memberships and Discounts screen. */
 export function DiscountsManager() {
@@ -42,6 +44,7 @@ export function DiscountsManager() {
       discountType: d.discountType,
       discountValue: String(isPesoType(d.discountType) ? d.discountValue / 100 : d.discountValue),
       maxAvailments: String(d.maxAvailments),
+      maxTotalDiscount: String((d.maxTotalDiscountMinor ?? 0) / 100),
       active: d.active,
     });
   }
@@ -59,6 +62,7 @@ export function DiscountsManager() {
       // Peso types are entered in pesos, stored as minor units; percentage stored as-is.
       discountValue: isPesoType(form.discountType) ? Math.round(rawValue * 100) : rawValue,
       maxAvailments: Number(form.maxAvailments),
+      maxTotalDiscountMinor: Math.round(Number(form.maxTotalDiscount) * 100),
       active: form.active,
     });
     if (res.ok) {
@@ -102,6 +106,10 @@ export function DiscountsManager() {
             <input type="number" min={0} value={form.maxAvailments} onChange={(e) => setForm({ ...form, maxAvailments: e.target.value })} />
           </div>
           <div>
+            <label>Max Total Discount (PHP, 0 = unlimited)</label>
+            <input type="number" min={0} value={form.maxTotalDiscount} onChange={(e) => setForm({ ...form, maxTotalDiscount: e.target.value })} />
+          </div>
+          <div>
             <label>Status</label>
             <select value={form.active ? "TRUE" : "FALSE"} onChange={(e) => setForm({ ...form, active: e.target.value === "TRUE" })}>
               <option value="TRUE">Active</option>
@@ -127,6 +135,7 @@ export function DiscountsManager() {
               <th>Value</th>
               <th>Used</th>
               <th>Maximum</th>
+              <th>Total Given / Budget</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -143,6 +152,11 @@ export function DiscountsManager() {
                 </td>
                 <td>{d.timesAvailed}</td>
                 <td>{d.maxAvailments === 0 ? "Unlimited" : d.maxAvailments}</td>
+                <td>
+                  PHP {((d.totalDiscountedMinor ?? 0) / 100).toFixed(2)}
+                  {" / "}
+                  {(d.maxTotalDiscountMinor ?? 0) === 0 ? "Unlimited" : `PHP ${((d.maxTotalDiscountMinor ?? 0) / 100).toFixed(2)}`}
+                </td>
                 <td>
                   <span className={`badge ${d.active ? "on" : "off"}`}>{d.active ? "Active" : "Inactive"}</span>
                 </td>

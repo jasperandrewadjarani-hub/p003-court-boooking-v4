@@ -224,7 +224,7 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
       if (input.discountCode) {
         const taxableBeforePromo = cart.subtotalMinor - cart.membershipDiscountMinor;
         const quote = await quoteDiscount(tx, input.tenantId, input.discountCode, taxableBeforePromo, cart.totalHours);
-        const consumed = await consumeDiscount(tx, input.tenantId, quote.discountId);
+        const consumed = await consumeDiscount(tx, input.tenantId, quote.discountId, quote.amountMinor);
         if (!consumed) {
           throw new Error(`Discount code "${quote.code}" just reached its usage limit — please remove it and try again.`);
         }

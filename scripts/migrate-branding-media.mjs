@@ -33,9 +33,11 @@ async function main() {
     for (const t of tenants) {
       const row = await prisma.tenantSetting.findUnique({ where: { tenantId_key: { tenantId: t.id, key: "branding" } } });
       const b = row?.value ?? {};
+      // No branding row at all, or already split → nothing to move (the app
+      // falls back to DEFAULT_BRANDING / the flags for these).
       const alreadySplit = !b.logoUrl && !b.headerLogoUrl && b._hasLogo !== undefined;
-      if (alreadySplit) {
-        console.log(`  ${t.slug.padEnd(18)} already split — skip`);
+      if (!row || alreadySplit) {
+        console.log(`  ${t.slug.padEnd(18)} ${!row ? "no branding row" : "already split"} — skip`);
         skipped++;
         continue;
       }
@@ -48,7 +50,7 @@ async function main() {
           update: { value: media },
           create: { tenantId: t.id, key: "branding_media", value: media },
         });
-        await prisma.tenantSetting.update({ where: { tenantId_key: { tenantId: t.id, key: "branding" } }, data: { value: core } });
+        await prisma.tenantSetting.upsert({ where: { tenantId_key: { tenantId: t.id, key: "branding" } }, update: { value: core }, create: { tenantId: t.id, key: "branding", value: core } });
         await prisma.tenant.update({ where: { id: t.id }, data: { logoUrl: null } });
       }
       migrated++;

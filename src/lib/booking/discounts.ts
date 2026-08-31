@@ -64,6 +64,15 @@ export async function quoteDiscount(
   }
   const amountMinor = Math.min(Math.max(raw, 0), Math.max(taxableAmountMinor, 0));
 
+  // Total peso-budget cap: reject (all-or-nothing) if giving this booking's
+  // discount would push the running total past the budget. Guarantees the
+  // cumulative discount never exceeds maxTotalDiscountMinor. The authoritative
+  // guarantee is the atomic guard in consumeDiscount; this makes the preview /
+  // pre-consume quote agree with it.
+  if (discount.maxTotalDiscountMinor > 0 && discount.totalDiscountedMinor + amountMinor > discount.maxTotalDiscountMinor) {
+    throw new Error(`Discount code "${normalized}" has reached its total limit.`);
+  }
+
   return {
     discountId: discount.id,
     code: normalized,
@@ -81,12 +90,15 @@ export async function quoteDiscount(
  * back the whole booking transaction (matches v3b: "increment only after
  * rows append successfully, under lock").
  */
-export async function consumeDiscount(tx: Prisma.TransactionClient, tenantId: string, discountId: string): Promise<boolean> {
+export async function consumeDiscount(tx: Prisma.TransactionClient, tenantId: string, discountId: string, amountMinor = 0): Promise<boolean> {
   const rows = await tx.$queryRaw<{ times_availed: number }[]>`
     UPDATE discounts
-    SET times_availed = times_availed + 1, updated_at = now()
+    SET times_availed = times_availed + 1,
+        total_discounted_minor = total_discounted_minor + ${amountMinor},
+        updated_at = now()
     WHERE id = ${discountId}::uuid AND tenant_id = ${tenantId}::uuid AND active
       AND (max_availments = 0 OR times_availed < max_availments)
+      AND (max_total_discount_minor = 0 OR total_discounted_minor + ${amountMinor} <= max_total_discount_minor)
     RETURNING times_availed
   `;
   return rows.length > 0;
