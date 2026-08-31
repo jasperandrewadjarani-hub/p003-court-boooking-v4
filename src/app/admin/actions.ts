@@ -43,7 +43,7 @@ import {
   getPerformanceSettings,
   savePerformanceSettings,
   type PerformanceSettings,
-  getBrandingSettings,
+  getBrandingForAdmin,
   saveBrandingSettings,
   resetBrandingSettings,
   type BrandingSettings,
@@ -396,7 +396,7 @@ export async function savePerformanceSettingsAction(input: PerformanceSettings) 
 export async function fetchBrandingAction() {
   const tenant = await resolveTenant();
   await requireStaff();
-  return getBrandingSettings(tenant.id);
+  return getBrandingForAdmin(tenant.id);
 }
 
 export async function saveBrandingAction(input: BrandingSettings) {

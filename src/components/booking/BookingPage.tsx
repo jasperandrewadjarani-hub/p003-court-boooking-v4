@@ -18,8 +18,9 @@ interface TenantInfo {
   name: string;
   slug: string;
   currency: string;
-  logoUrl?: string | null;
-  headerLogoUrl?: string | null;
+  hasLogo?: boolean;
+  hasHeaderLogo?: boolean;
+  mediaVersion?: string; // cache-buster for the /api/branding/* logo routes
 }
 
 function todayKey(offsetDays = 0): string {
@@ -379,16 +380,17 @@ export function BookingPage({
       </div>
 
       <header className="hud">
-        {tenant.headerLogoUrl ? (
+        {tenant.hasHeaderLogo ? (
           // A full text/banner logo replaces the circular logo + business-name
-          // title entirely (configured in Admin → Settings → Branding).
+          // title entirely (configured in Admin → Settings → Branding). Served
+          // from the cacheable /api/branding route, not inlined per load.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={tenant.headerLogoUrl} alt={tenant.name} className="hud-header-logo" />
+          <img src={`/api/branding/header-logo?v=${tenant.mediaVersion ?? "0"}`} alt={tenant.name} className="hud-header-logo" />
         ) : (
           <>
-            {tenant.logoUrl ? (
+            {tenant.hasLogo ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={tenant.logoUrl} alt={tenant.name} className="hud-logo" />
+              <img src={`/api/branding/logo?v=${tenant.mediaVersion ?? "0"}`} alt={tenant.name} className="hud-logo" />
             ) : null}
             <h1 className="brand">
               <span>{tenant.name}</span>

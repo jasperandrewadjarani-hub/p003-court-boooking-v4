@@ -37,8 +37,11 @@ export default async function Home() {
           name: tenant.name,
           slug: tenant.slug,
           currency: tenant.currency,
-          logoUrl: branding.logoUrl, // from branding settings — resolveTenant no longer ships the logo
-          headerLogoUrl: branding.headerLogoUrl, // full text/banner logo — replaces logo + title when set
+          // Flags only — the logo bytes are served from the cacheable
+          // /api/branding route, never embedded in this per-load payload.
+          hasLogo: branding.hasLogo,
+          hasHeaderLogo: branding.hasHeaderLogo,
+          mediaVersion: branding.mediaVersion,
         }}
         initialGrid={grid}
         memberships={memberships}

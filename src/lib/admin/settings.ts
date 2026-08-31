@@ -237,8 +237,58 @@ export const DEFAULT_BRANDING: BrandingSettings = {
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
-export async function getBrandingSettings(tenantId: string) {
-  return getSettingKey(tenantId, "branding", DEFAULT_BRANDING);
+// Egress design (mirrors the court-photo / payment-QR split): the logo bytes
+// (logoUrl + headerLogoUrl, each ~200-400 KB inline data-URIs) are the ONLY
+// heavy part of branding, yet the colour/font part is read on EVERY page load
+// for brandingToCss. So the bytes live in their own "branding_media" key and
+// are served through the cacheable GET /api/branding/[kind] route (download
+// once, cached), while the always-read "branding" key holds only colours,
+// fonts, small boolean has-logo flags, and a mediaVersion cache-buster. This
+// keeps the logo bytes off both the DB->app read and the app->client payload
+// of the hot path.
+
+interface BrandingMedia {
+  logoUrl: string;
+  headerLogoUrl: string;
+}
+const EMPTY_MEDIA: BrandingMedia = { logoUrl: "", headerLogoUrl: "" };
+
+// What the hot path (page/layout) gets: colours/fonts + flags + version, with
+// the byte fields deliberately blanked so they never ship to the client.
+export type BrandingRead = BrandingSettings & { hasLogo: boolean; hasHeaderLogo: boolean; mediaVersion: string };
+
+/** HOT read — colours/fonts + has-logo flags + mediaVersion, NO image bytes.
+ *  Backward-compatible: if a tenant's branding row still holds legacy inline
+ *  logoUrl/headerLogoUrl bytes (pre-migration), the flags are derived from
+ *  their presence so the header still renders correctly. */
+export async function getBrandingSettings(tenantId: string): Promise<BrandingRead> {
+  const merged = (await getSettingKey(tenantId, "branding", DEFAULT_BRANDING)) as BrandingSettings & {
+    _hasLogo?: boolean;
+    _hasHeaderLogo?: boolean;
+    _mediaVersion?: string;
+  };
+  const hasLogo = merged._hasLogo ?? !!merged.logoUrl;
+  const hasHeaderLogo = merged._hasHeaderLogo ?? !!merged.headerLogoUrl;
+  const mediaVersion = merged._mediaVersion ?? "0";
+  return { ...merged, logoUrl: "", headerLogoUrl: "", hasLogo, hasHeaderLogo, mediaVersion };
+}
+
+/** The logo bytes only — read on demand by the cacheable route (never in the
+ *  hot path). Falls back to the legacy in-branding bytes if a tenant hasn't
+ *  been migrated to the separate key yet. */
+export async function getBrandingMedia(tenantId: string): Promise<BrandingMedia> {
+  const media = await getSettingKey(tenantId, "branding_media", EMPTY_MEDIA);
+  if (media.logoUrl || media.headerLogoUrl) return media;
+  const legacy = await getSettingKey(tenantId, "branding", DEFAULT_BRANDING);
+  return { logoUrl: legacy.logoUrl || "", headerLogoUrl: legacy.headerLogoUrl || "" };
+}
+
+/** FULL branding for the admin settings form — colours/fonts + the actual
+ *  logo bytes (so the form can preview/edit them). Not for the hot path. */
+export async function getBrandingForAdmin(tenantId: string): Promise<BrandingSettings> {
+  const merged = await getSettingKey(tenantId, "branding", DEFAULT_BRANDING);
+  const media = await getBrandingMedia(tenantId);
+  return { ...merged, logoUrl: media.logoUrl, headerLogoUrl: media.headerLogoUrl };
 }
 
 export async function saveBrandingSettings(tenantId: string, input: BrandingSettings) {
@@ -261,15 +311,21 @@ export async function saveBrandingSettings(tenantId: string, input: BrandingSett
   }
   assertInlineImageOk("Logo", clean.logoUrl);
   assertInlineImageOk("Header logo", clean.headerLogoUrl);
-  await saveSettingKey(tenantId, "branding", clean);
-  // Mirror the logo to Tenant.logoUrl so the customer header / resolveTenant
-  // pick it up without a second settings read.
-  await withTenant(tenantId, (tx) => tx.tenant.update({ where: { id: tenantId }, data: { logoUrl: clean.logoUrl || null, primaryColor: clean.primary, accentColor: clean.secondary } }));
+
+  // Split storage: heavy bytes in branding_media, everything else (with flags
+  // + a fresh version) in the always-read branding key.
+  await saveSettingKey(tenantId, "branding_media", { logoUrl: clean.logoUrl, headerLogoUrl: clean.headerLogoUrl });
+  const core = { ...clean, logoUrl: "", headerLogoUrl: "", _hasLogo: !!clean.logoUrl, _hasHeaderLogo: !!clean.headerLogoUrl, _mediaVersion: String(Date.now()) };
+  await saveSettingKey(tenantId, "branding", core);
+  // Colours still mirror to Tenant for resolveTenant; the logo bytes no longer
+  // do (they're served from branding_media via the cacheable route).
+  await withTenant(tenantId, (tx) => tx.tenant.update({ where: { id: tenantId }, data: { logoUrl: null, primaryColor: clean.primary, accentColor: clean.secondary } }));
 }
 
 export async function resetBrandingSettings(tenantId: string) {
-  await saveSettingKey(tenantId, "branding", DEFAULT_BRANDING);
-  await withTenant(tenantId, (tx) => tx.tenant.update({ where: { id: tenantId }, data: { primaryColor: DEFAULT_BRANDING.primary, accentColor: DEFAULT_BRANDING.secondary } }));
+  await saveSettingKey(tenantId, "branding_media", EMPTY_MEDIA);
+  await saveSettingKey(tenantId, "branding", { ...DEFAULT_BRANDING, logoUrl: "", headerLogoUrl: "", _hasLogo: false, _hasHeaderLogo: false, _mediaVersion: String(Date.now()) });
+  await withTenant(tenantId, (tx) => tx.tenant.update({ where: { id: tenantId }, data: { logoUrl: null, primaryColor: DEFAULT_BRANDING.primary, accentColor: DEFAULT_BRANDING.secondary } }));
 }
 
 // ---------------------------- Super-admin gate (staff) ---------------------------

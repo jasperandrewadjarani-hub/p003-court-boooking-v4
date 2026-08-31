@@ -50,9 +50,13 @@ async function main() {
   try {
     const tenant = await prisma.tenant.findUnique({ where: { slug } });
     if (!tenant) throw new Error(`Tenant "${slug}" not found.`);
-    const row = await prisma.tenantSetting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: "branding" } } });
-    const branding = (row?.value ?? {});
-    console.log(`Tenant: ${tenant.name} — current headerLogoUrl: ${branding.headerLogoUrl ? "(set)" : "(empty)"}`);
+    // Bytes live in branding_media; the always-read branding key keeps only a
+    // _hasHeaderLogo flag + _mediaVersion (see settings.ts egress design).
+    const mediaRow = await prisma.tenantSetting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: "branding_media" } } });
+    const brandRow = await prisma.tenantSetting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: "branding" } } });
+    const media = mediaRow?.value ?? { logoUrl: "", headerLogoUrl: "" };
+    const branding = brandRow?.value ?? {};
+    console.log(`Tenant: ${tenant.name} — current header logo: ${media.headerLogoUrl || branding.headerLogoUrl ? "(set)" : "(empty)"}`);
 
     if (!COMMIT) {
       console.log("\nDRY-RUN — nothing written. Add --commit to apply.");
@@ -60,13 +64,19 @@ async function main() {
       return;
     }
 
-    const next = { ...branding, headerLogoUrl: dataUri };
+    const nextMedia = { logoUrl: media.logoUrl || "", headerLogoUrl: dataUri };
+    await prisma.tenantSetting.upsert({
+      where: { tenantId_key: { tenantId: tenant.id, key: "branding_media" } },
+      update: { value: nextMedia },
+      create: { tenantId: tenant.id, key: "branding_media", value: nextMedia },
+    });
+    const nextBrand = { ...branding, logoUrl: "", headerLogoUrl: "", _hasHeaderLogo: !!dataUri, _hasLogo: branding._hasLogo ?? !!media.logoUrl, _mediaVersion: String(Date.now()) };
     await prisma.tenantSetting.upsert({
       where: { tenantId_key: { tenantId: tenant.id, key: "branding" } },
-      update: { value: next },
-      create: { tenantId: tenant.id, key: "branding", value: next },
+      update: { value: nextBrand },
+      create: { tenantId: tenant.id, key: "branding", value: nextBrand },
     });
-    console.log(`\nDONE — headerLogoUrl ${CLEAR ? "cleared" : "set"} for ${tenant.name}.`);
+    console.log(`\nDONE — header logo ${CLEAR ? "cleared" : "set"} for ${tenant.name}.`);
     await prisma.$disconnect();
   } catch (e) {
     await prisma.$disconnect();
