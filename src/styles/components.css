@@ -244,7 +244,7 @@ header.hud {
 @keyframes scan { 0% { top: 0; opacity: 1; } 100% { top: 100%; opacity: 0.2; } }
 
 .court-grid {
-  display: grid; grid-template-columns: 132px repeat(var(--court-count, 3), minmax(110px, 1fr));
+  display: grid; grid-template-columns: 104px repeat(var(--court-count, 3), minmax(110px, 1fr));
   gap: 1px; background: var(--line-grid);
   min-width: max-content; /* forces horizontal scroll instead of squeezing columns unreadably thin */
 }
@@ -562,10 +562,12 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
   display: grid; width: 100%;
   /* Compact: all courts share the row width (minmax(0,1fr)) so 11 fit without
      horizontal scroll; shorter rows so more time blocks are visible at once. */
-  grid-template-columns: 50px repeat(var(--dispatch-courts), minmax(0, 1fr));
+  grid-template-columns: 62px repeat(var(--dispatch-courts), minmax(0, 1fr));
   grid-template-rows: 34px repeat(var(--dispatch-slots), 52px);
   gap: 1px; background: var(--line-grid);
 }
+/* Time range on ONE line (e.g. "9AM-10AM") in both the header and cells. */
+.dispatch-time-cell .dtc-range { white-space: nowrap; }
 .dispatch-time-head, .dispatch-court-head, .dispatch-time-cell { background: var(--bg-panel); font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
 .dispatch-time-head, .dispatch-court-head { position: sticky; top: 0; z-index: 7; padding: 5px 6px; text-transform: uppercase; letter-spacing: .5px; }
 .dispatch-time-head { left: 0; z-index: 9; display: flex; flex-direction: column; justify-content: center; }

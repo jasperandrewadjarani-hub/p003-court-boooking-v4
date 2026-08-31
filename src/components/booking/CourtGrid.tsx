@@ -10,7 +10,9 @@ export function slotKey(courtId: string, start: string): string {
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
+  const ap = h >= 12 ? "PM" : "AM";
+  // Compact: "9AM" on the hour, "9:30AM" otherwise (uppercase AM/PM).
+  return m === 0 ? `${hour12}${ap}` : `${hour12}:${String(m).padStart(2, "0")}${ap}`;
 }
 
 /**

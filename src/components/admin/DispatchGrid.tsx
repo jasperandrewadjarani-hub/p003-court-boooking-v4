@@ -17,7 +17,9 @@ const POLL_MS = 20_000;
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
+  const ap = h >= 12 ? "PM" : "AM";
+  // Compact: "9AM" on the hour, "9:30AM" otherwise (uppercase AM/PM).
+  return m === 0 ? `${hour12}${ap}` : `${hour12}:${String(m).padStart(2, "0")}${ap}`;
 }
 
 // v3b tile clock ("12:00 AM") + date label ("17-Aug") formats.
@@ -290,7 +292,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
               <div className="dispatch-time-cell" style={{ gridColumn: 1, gridRow: i + 2 }}>
                 <span className="dtc-range">
                   <span className="dtc-start">{formatTime(courtsV[0].slots[i].start)}</span>
-                  <span className="dtc-dash">–</span>
+                  <span className="dtc-dash">-</span>
                   <span className="dtc-end">{formatTime(courtsV[0].slots[i].end)}</span>
                 </span>
               </div>
