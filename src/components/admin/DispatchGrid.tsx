@@ -8,7 +8,7 @@ import type { DispatchGridData, DispatchCourt, DispatchTile } from "@/lib/admin/
 import type { MembershipOption } from "@/lib/booking/memberships";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
-import { labelize } from "@/lib/format";
+import { labelize, compileSlots } from "@/lib/format";
 
 // Live update every 20s (matches v3b's dispatch-grid poll cadence) so a
 // newly received booking shows up without a manual refresh.
@@ -449,6 +449,20 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
   );
 }
 
+const FD_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const FD_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "31-Aug-26 (Mon)" — mirrors the customer confirm modal's date header.
+function fdDateHeader(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return `${String(d).padStart(2, "0")}-${FD_MONTHS[m - 1]}-${String(y).slice(2)} (${FD_WEEKDAYS[dt.getDay()]})`;
+}
+function fdHours(start: string, end: string): number {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  return (eh * 60 + em - (sh * 60 + sm)) / 60;
+}
+
 function FrontdeskBookingModal({
   items,
   dateKey,
@@ -468,6 +482,11 @@ function FrontdeskBookingModal({
   const [preview, setPreview] = useState<{ totalMinor: number; discountMinor: number; discountError?: string }>({ totalMinor: 0, discountMinor: 0 });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  // Merge consecutive same-court slots into one range row + total booked hours,
+  // matching the customer confirm-modal summary (1 slot = 1 hour).
+  const compiledItems = compileSlots(items.map((i) => ({ courtName: i.courtName, start: i.start, end: i.end, priceMinor: 0 })));
+  const totalHours = items.reduce((s, i) => s + fdHours(i.start, i.end), 0);
 
   useEffect(() => {
     const h = setTimeout(() => {
@@ -515,15 +534,25 @@ function FrontdeskBookingModal({
           [ ESC ]
         </span>
         <h3>Frontdesk Booking</h3>
-        <div>
-          {items.map((item) => (
-            <div className="frontdesk-item" key={item.key}>
-              <strong>{item.courtName}</strong>
-              <span>
-                {formatTime(item.start)}–{formatTime(item.end)}
+        <div className="grouped-booking-block">
+          <div className="grouped-booking-head">
+            <strong className="grouped-booking-date">{fdDateHeader(dateKey)}</strong>
+            <span>Booking Summary</span>
+          </div>
+          {compiledItems.map((item) => (
+            <div className="grouped-booking-item" key={item.courtName + item.start}>
+              <div className="booking-court-identity">
+                <strong>{item.courtName}</strong>
+              </div>
+              <span className="grouped-booking-time">
+                {formatTime(item.start)} – {formatTime(item.end)}
               </span>
             </div>
           ))}
+          <div className="grouped-booking-total">
+            <span>Total Court Hours</span>
+            <strong>{totalHours.toFixed(1)} court hrs</strong>
+          </div>
         </div>
         <div className="total-line" style={{ marginTop: 12 }}>
           <span>Estimated Total</span>

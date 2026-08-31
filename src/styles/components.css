@@ -59,6 +59,25 @@
   background: color-mix(in srgb, var(--warn-text-light) 13%, transparent);
   color: var(--warn-text-light);
 }
+/* Booking-summary card (customer confirm/success + admin dashboard recent +
+   admin frontdesk modal): its dark hex (#0A131E/#101D2A) is hardcoded, so in
+   light mode it stayed a dark card floating in a light modal. Re-skin it to
+   theme surfaces in light mode so it reads as a proper light card, matching
+   the rest of the admin/customer light UI. Borders/text already use tokens. */
+[data-theme="light"] .grouped-booking-block { background: var(--bg-panel); box-shadow: 0 8px 22px rgba(20, 40, 60, .12); }
+[data-theme="light"] .grouped-booking-head,
+[data-theme="light"] .grouped-booking-total { background: var(--bg-raised); }
+/* Admin dispatch selection in light mode: the floating dock and the selected
+   vacant tiles used hardcoded dark/lime values. Track the theme + brand accent
+   so the dock is a light card and selected tiles read as a clear brand tint. */
+[data-theme="light"] .dispatch-selection-dock {
+  background: var(--bg-panel);
+  box-shadow: 0 14px 40px rgba(20, 40, 60, .22), 0 0 0 1px color-mix(in srgb, var(--accent-optic) 30%, transparent);
+}
+[data-theme="light"] .dispatch-tile.vacant.selected {
+  background: color-mix(in srgb, var(--accent-optic) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-optic) 55%, transparent);
+}
 
 .theme-toggle {
   position: fixed; top: 14px; right: 14px; z-index: 60;
@@ -225,7 +244,7 @@ header.hud {
 @keyframes scan { 0% { top: 0; opacity: 1; } 100% { top: 100%; opacity: 0.2; } }
 
 .court-grid {
-  display: grid; grid-template-columns: 112px repeat(var(--court-count, 3), minmax(110px, 1fr));
+  display: grid; grid-template-columns: 132px repeat(var(--court-count, 3), minmax(110px, 1fr));
   gap: 1px; background: var(--line-grid);
   min-width: max-content; /* forces horizontal scroll instead of squeezing columns unreadably thin */
 }
@@ -245,7 +264,10 @@ header.hud {
 .court-grid .time-label {
   position: sticky; left: 0; z-index: 6;
   background: var(--bg-panel); color: var(--text-dim); font-family: var(--font-mono);
-  font-size: 14px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px;
+  /* Left-aligned in its own (widened) column so the range never spills under
+     the first court column, and clipped rather than overflowing if it can't fit. */
+  font-size: 14px; display: flex; align-items: center; justify-content: flex-start; text-align: left;
+  padding: 2px 6px 2px 10px; overflow: hidden;
 }
 .tl-range { white-space: nowrap; }
 .slot {
