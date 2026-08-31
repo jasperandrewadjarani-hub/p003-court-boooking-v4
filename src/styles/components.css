@@ -785,7 +785,7 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   .dispatch-header { display: block; }
   .dispatch-controls { justify-content: flex-start; margin-top: 12px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
   .dispatch-filter { flex: 0 0 auto; }
-  .dispatch-grid { grid-template-columns: 74px repeat(var(--dispatch-courts), minmax(128px, 1fr)); grid-template-rows: 32px repeat(var(--dispatch-slots), 74px); }
+  .dispatch-grid { grid-template-columns: 74px repeat(var(--dispatch-courts), minmax(128px, 1fr)); grid-template-rows: 46px repeat(var(--dispatch-slots), 74px); }
   .dispatch-court-head { font-size: 12px; padding: 6px 5px; }
   .dispatch-court-head span { font-size: 8px; }
   .dispatch-time-head { left: auto; z-index: 30; will-change: transform; }
@@ -834,13 +834,12 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   .date-chip { font-size: 11px; padding: 7px 9px; }
   .date-chip strong { font-size: 13px; }
   .date-chip span { font-size: 9px; }
-  .court-grid { grid-template-columns: 60px repeat(var(--court-count, 3), minmax(88px, 1fr)); }
+  .court-grid { grid-template-columns: 80px repeat(var(--court-count, 3), minmax(88px, 1fr)); }
   .court-grid .head { font-size: 12px; padding: 6px 4px; }
   .court-grid .head strong { font-size: 12px; }
   .court-grid .head span { font-size: 8px; margin-top: 2px; }
-  /* One line, larger font — the compact "8AM-9AM" fits, and the grid scrolls
-     horizontally anyway, so no need to stack or shrink on mobile. */
-  .court-grid .time-label { font-size: 15px; }
+  /* One line at a size that fits the (now wider) column without clipping. */
+  .court-grid .time-label { font-size: 12px; padding-left: 6px; }
   .tl-range { white-space: nowrap; }
   .slot { min-height: 34px; }
   .slot-label { font-size: 8px; }
@@ -853,7 +852,7 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
 @media (max-width: 420px) {
   .admin-main { padding: 14px 10px; }
   .stat-cards { grid-template-columns: 1fr; }
-  .dispatch-grid { grid-template-columns: 52px repeat(var(--dispatch-courts), minmax(120px, 1fr)); grid-template-rows: 30px repeat(var(--dispatch-slots), 70px); }
+  .dispatch-grid { grid-template-columns: 76px repeat(var(--dispatch-courts), minmax(120px, 1fr)); grid-template-rows: 46px repeat(var(--dispatch-slots), 70px); }
   .dispatch-time-cell, .dispatch-tile { min-height: 70px; }
   .dispatch-date-picker input { max-width: 118px; }
   .dispatch-date-label { font-size: 10px; min-width: 88px; }
@@ -861,6 +860,6 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   /* Customer page: last squeeze for very narrow phones. */
   .brand { font-size: 19px; letter-spacing: 0.5px; }
   .hud-logo { height: 40px; }
-  .court-grid { grid-template-columns: 54px repeat(var(--court-count, 3), minmax(82px, 1fr)); }
+  .court-grid { grid-template-columns: 76px repeat(var(--court-count, 3), minmax(82px, 1fr)); }
   .slot { min-height: 32px; }
 }
