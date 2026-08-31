@@ -3,6 +3,7 @@
 import { resolveTenant } from "@/lib/tenant/resolve";
 import { getAvailabilityGrid, getBookingRules } from "@/lib/booking/availability";
 import { createBooking, priceCart, SlotTakenError, type CartItemInput } from "@/lib/booking/create";
+import { releaseDiscount, discountCountsForStatus } from "@/lib/booking/discounts";
 import { getCurrentCustomer } from "@/lib/auth/customerAuth";
 import { getMyBookings } from "@/lib/booking/customerBookings";
 import { getPaymentQrImages } from "@/lib/booking/paymentSettings";
@@ -99,6 +100,10 @@ export async function cancelMyBookingAction(bookingGroupId: string) {
       }
       await tx.bookingGroup.update({ where: { id: bookingGroupId }, data: { status: "cancelled" } });
       await tx.booking.updateMany({ where: { bookingGroupId }, data: { status: "cancelled" } });
+      // A cancelled booking releases its discount (availment + budget) back.
+      if (group.discountId && discountCountsForStatus(group.status)) {
+        await releaseDiscount(tx, tenant.id, group.discountId, group.discountAmountMinor);
+      }
       await tx.auditLog.create({
         data: {
           tenantId: tenant.id,

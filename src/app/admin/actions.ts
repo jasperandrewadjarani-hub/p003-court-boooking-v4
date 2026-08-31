@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/auth/staffAuth";
 import { getDispatchGrid } from "@/lib/admin/dispatchGrid";
 import { listBookings, getBookingGroupById, type BookingFilters } from "@/lib/admin/bookings";
 import { recordPayment } from "@/lib/admin/payments";
+import { releaseDiscount, consumeDiscount, discountCountsForStatus } from "@/lib/booking/discounts";
 import { withTenant } from "@/lib/tenant/withTenant";
 import {
   listCourts,
@@ -147,8 +148,19 @@ export async function updateBookingStatusAction(bookingGroupId: string, newStatu
 
   try {
     await withTenant(tenant.id, async (tx) => {
+      const before = await tx.bookingGroup.findUnique({ where: { id: bookingGroupId }, select: { status: true, discountId: true, discountAmountMinor: true } });
       await tx.bookingGroup.update({ where: { id: bookingGroupId }, data: { status: newStatus } });
       await tx.booking.updateMany({ where: { bookingGroupId }, data: { status: newStatus } });
+      // Keep the discount's usage in sync: releasing it when the booking is
+      // cancelled/lapsed, and re-consuming it if a cancelled/lapsed booking is
+      // reactivated. Re-consume is best-effort (won't block the status change if
+      // the code is now at its cap).
+      if (before?.discountId) {
+        const wasCounted = discountCountsForStatus(before.status);
+        const nowCounted = discountCountsForStatus(newStatus);
+        if (wasCounted && !nowCounted) await releaseDiscount(tx, tenant.id, before.discountId, before.discountAmountMinor);
+        else if (!wasCounted && nowCounted) await consumeDiscount(tx, tenant.id, before.discountId, before.discountAmountMinor);
+      }
       await tx.auditLog.create({
         data: {
           tenantId: tenant.id,

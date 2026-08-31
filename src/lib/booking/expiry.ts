@@ -40,6 +40,25 @@ export async function sweepLapsedBookings(
       UPDATE bookings SET status = 'lapsed', updated_at = now()
       WHERE tenant_id = ${tenantId}::uuid AND booking_group_id = ANY(${ids}::uuid[])
     `;
+    // A lapsed reservation should NOT count against its discount code — release
+    // the availment + budget back so an abandoned checkout doesn't burn a slot.
+    // Set-based so several lapsed groups sharing one code net out correctly; the
+    // just-lapsed groups keep their discountCode snapshot (for monitoring), only
+    // the code's running counters are decremented. Runs once per group (a group
+    // is only lapsed while status='reserved', then excluded from future sweeps).
+    await tx.$executeRaw`
+      UPDATE discounts d SET
+        times_availed = GREATEST(0, d.times_availed - agg.cnt),
+        total_discounted_minor = GREATEST(0, d.total_discounted_minor - agg.amt),
+        updated_at = now()
+      FROM (
+        SELECT discount_id, COUNT(*)::int AS cnt, COALESCE(SUM(discount_amount_minor), 0)::int AS amt
+        FROM booking_groups
+        WHERE id = ANY(${ids}::uuid[]) AND discount_id IS NOT NULL
+        GROUP BY discount_id
+      ) agg
+      WHERE d.id = agg.discount_id AND d.tenant_id = ${tenantId}::uuid
+    `;
   }
 
   return lapsedGroups.map((g) => g.id);

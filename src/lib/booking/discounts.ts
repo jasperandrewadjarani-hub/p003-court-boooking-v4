@@ -90,6 +90,26 @@ export async function quoteDiscount(
  * back the whole booking transaction (matches v3b: "increment only after
  * rows append successfully, under lock").
  */
+/** A discount only "counts" against its availment count + total budget while
+ *  the booking is live. Cancelled/lapsed bookings release their discount so it
+ *  doesn't burn a slot / eat the budget for a booking that never happened. */
+export function discountCountsForStatus(status: string): boolean {
+  return status !== "cancelled" && status !== "lapsed";
+}
+
+/** Inverse of consumeDiscount — releases a previously-consumed discount back to
+ *  its pool when its booking is cancelled/lapsed. Floors at 0 so a code can
+ *  never go negative. */
+export async function releaseDiscount(tx: Prisma.TransactionClient, tenantId: string, discountId: string, amountMinor = 0): Promise<void> {
+  await tx.$executeRaw`
+    UPDATE discounts
+    SET times_availed = GREATEST(0, times_availed - 1),
+        total_discounted_minor = GREATEST(0, total_discounted_minor - ${amountMinor}),
+        updated_at = now()
+    WHERE id = ${discountId}::uuid AND tenant_id = ${tenantId}::uuid
+  `;
+}
+
 export async function consumeDiscount(tx: Prisma.TransactionClient, tenantId: string, discountId: string, amountMinor = 0): Promise<boolean> {
   const rows = await tx.$queryRaw<{ times_availed: number }[]>`
     UPDATE discounts
