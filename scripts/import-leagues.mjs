@@ -54,8 +54,8 @@ const CN = (...ns) => ns.map((n) => `DND-C${n}`); // numbers
 // stays this date via the local_date trigger — see notes.md gotcha 15).
 const SEGMENTS = [
   { league: "Palo", abbr: "PALO", days: [1, 3, 5], courts: CA("A", "B", "C", "D", "E"), start: 19, end: 23 },
-  { league: "Picklebelles and Bros", abbr: "PBB", days: [2, 4, 6], courts: CA("A", "B", "C", "D", "E"), start: 20, end: 24 },
-  { league: "Dinkininis", abbr: "DINK", days: [6], courts: CN(1, 2, 3, 4), start: 18, end: 24 },
+  { league: "Picklebelles and Bros", abbr: "PBB", days: [2, 4, 6], courts: CA("A", "B", "C", "D", "E"), start: 8, end: 12 },
+  { league: "Dinkininis", abbr: "DINK", days: [6], courts: CN(1, 2, 3, 4), start: 6, end: 12 },
   { league: "PWL", abbr: "PWL", days: [2, 4], courts: CN(1, 2, 3), start: 19, end: 22 },
   { league: "PWL", abbr: "PWL", days: [0], courts: CN(1, 2, 3, 4, 5, 6), start: 19, end: 22 },
   { league: "Rh", abbr: "RH", days: [1], courts: CN(1, 4, 5, 6), start: 18, end: 20 },
