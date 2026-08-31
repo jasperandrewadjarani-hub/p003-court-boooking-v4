@@ -38,6 +38,10 @@ const TZ = "Asia/Manila";
 const START = "2026-08-31"; // "today" per the request
 const END = "2026-12-31"; // "to December" = through end of December
 const COMMIT = process.argv.includes("--commit");
+// --reset-leagues: delete every existing LEAG-* group (cascades to its rows)
+// before importing, so a changed schedule rebuilds cleanly. Only ever touches
+// LEAG-* groups — never MIG26/BK or any other booking.
+const RESET = process.argv.includes("--reset-leagues");
 
 const pad2 = (n) => String(n).padStart(2, "0");
 
@@ -51,12 +55,14 @@ const CN = (...ns) => ns.map((n) => `DND-C${n}`); // numbers
 const SEGMENTS = [
   { league: "Palo", abbr: "PALO", days: [1, 3, 5], courts: CA("A", "B", "C", "D", "E"), start: 19, end: 23 },
   { league: "Picklebelles and Bros", abbr: "PBB", days: [2, 4, 6], courts: CA("A", "B", "C", "D", "E"), start: 20, end: 24 },
-  { league: "Dinkininis", abbr: "DINK", days: [6], courts: CN(1, 2, 3), start: 18, end: 24 },
+  { league: "Dinkininis", abbr: "DINK", days: [6], courts: CN(1, 2, 3, 4), start: 18, end: 24 },
   { league: "PWL", abbr: "PWL", days: [2, 4], courts: CN(1, 2, 3), start: 19, end: 22 },
   { league: "PWL", abbr: "PWL", days: [0], courts: CN(1, 2, 3, 4, 5, 6), start: 19, end: 22 },
   { league: "Rh", abbr: "RH", days: [1], courts: CN(1, 4, 5, 6), start: 18, end: 20 },
-  { league: "Pincers", abbr: "PINC", days: [1], courts: CN(1, 2, 3), start: 20, end: 23 },
-  { league: "Pincers", abbr: "PINC", days: [1], courts: CN(2, 3), start: 19, end: 20 },
+  // Pincers Mon: court 1 = 8-11pm; courts 2-3 = 7-11pm (the longer window
+  // supersedes the 8-11 on those two, so no redundant same-group overlap).
+  { league: "Pincers", abbr: "PINC", days: [1], courts: CN(1), start: 20, end: 23 },
+  { league: "Pincers", abbr: "PINC", days: [1], courts: CN(2, 3), start: 19, end: 23 },
   { league: "Pincers", abbr: "PINC", days: [5], courts: CN(1, 2, 3), start: 19, end: 23 },
 ];
 
@@ -173,6 +179,12 @@ async function main() {
 
     if (priceErrors.length) {
       throw new Error(`Refusing to commit: ${priceErrors.length} row(s) have no configured price. Fix the price matrix / base rates first (or tell me to insert those at PHP 0).`);
+    }
+
+    // ---- Optional reset: remove prior LEAG-* groups (cascades to rows) ----------
+    if (RESET) {
+      const del = await prisma.bookingGroup.deleteMany({ where: { tenantId: tid, reference: { startsWith: "LEAG-" } } });
+      console.log(`\n--reset-leagues: deleted ${del.count} existing LEAG-* group(s) (rows cascaded).`);
     }
 
     // ---- Ensure league customers ------------------------------------------------
