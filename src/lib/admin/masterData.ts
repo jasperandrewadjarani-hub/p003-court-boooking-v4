@@ -173,7 +173,7 @@ export async function deleteHoliday(tenantId: string, id: string) {
 
 export interface DiscountInput {
   code: string;
-  discountType: "percentage" | "fixed_php";
+  discountType: "percentage" | "fixed_php" | "fixed_php_per_slot";
   discountValue: number;
   maxAvailments: number; // 0 = unlimited
   active: boolean;

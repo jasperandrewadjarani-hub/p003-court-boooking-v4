@@ -11,6 +11,7 @@ const LABEL_SPECIAL: Record<string, string> = {
   web_app: "Web App",
   walk_in: "Walk-In",
   fixed_php: "Fixed PHP",
+  fixed_php_per_slot: "PHP per Slot",
 };
 
 /** Turns an enum/machine value into a human label with proper capitalization:

@@ -183,7 +183,7 @@ export function calculatePrice(input: PriceCalcInput): PriceCalcResult {
  *  own cart-level taxableBeforePromo, so it always reflects the current cart
  *  contents (matches v3b's getDiscountQuote_(code, taxableBeforePromotion)). */
 export interface CartDiscountInput {
-  type: "percentage" | "fixed_php";
+  type: "percentage" | "fixed_php" | "fixed_php_per_slot";
   value: number;
 }
 
@@ -219,10 +219,15 @@ export function calculateCartTotal(
   const subtotalMinor = results.reduce((s, r) => s + r.subtotalMinor, 0);
   const membershipDiscountMinor = results.reduce((s, r) => s + r.discountMinor, 0);
   const taxableBeforePromo = subtotalMinor - membershipDiscountMinor;
+  // 1 slot = 1 booked hour — the multiplier for a fixed_php_per_slot promo.
+  const totalHours = results.reduce((s, r) => s + r.hours, 0);
 
   let discountMinor = 0;
   if (discount) {
-    const raw = discount.type === "percentage" ? Math.round((taxableBeforePromo * discount.value) / 100) : discount.value;
+    let raw: number;
+    if (discount.type === "percentage") raw = Math.round((taxableBeforePromo * discount.value) / 100);
+    else if (discount.type === "fixed_php_per_slot") raw = discount.value * Math.max(0, Math.round(totalHours));
+    else raw = discount.value; // fixed_php
     discountMinor = Math.min(Math.max(raw, 0), taxableBeforePromo);
   }
 
@@ -238,6 +243,6 @@ export function calculateCartTotal(
     discountMinor,
     taxMinor,
     totalMinor,
-    totalHours: results.reduce((s, r) => s + r.hours, 0),
+    totalHours,
   };
 }

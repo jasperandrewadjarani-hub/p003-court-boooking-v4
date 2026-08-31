@@ -3,17 +3,24 @@
 import { useEffect, useState, useTransition } from "react";
 import { listDiscountsAction, saveDiscountAction, deleteDiscountAction } from "@/app/admin/actions";
 
+type DiscountType = "percentage" | "fixed_php" | "fixed_php_per_slot";
+
 interface DiscountRow {
   id: string;
   code: string;
-  discountType: "percentage" | "fixed_php";
+  discountType: DiscountType;
   discountValue: number;
   maxAvailments: number;
   timesAvailed: number;
   active: boolean;
 }
 
-const EMPTY = { code: "", discountType: "percentage" as "percentage" | "fixed_php", discountValue: "0", maxAvailments: "0", active: true };
+// Both peso types are entered in pesos and stored as minor units (centavos);
+// percentage is stored as-is.
+const isPesoType = (t: DiscountType) => t === "fixed_php" || t === "fixed_php_per_slot";
+const typeLabel = (t: DiscountType) => (t === "percentage" ? "Percentage" : t === "fixed_php_per_slot" ? "PHP per Slot" : "Fixed PHP");
+
+const EMPTY = { code: "", discountType: "percentage" as DiscountType, discountValue: "0", maxAvailments: "0", active: true };
 
 /** v3b "Discounts" sub-panel of the Memberships and Discounts screen. */
 export function DiscountsManager() {
@@ -33,7 +40,7 @@ export function DiscountsManager() {
     setForm({
       code: d.code,
       discountType: d.discountType,
-      discountValue: String(d.discountType === "fixed_php" ? d.discountValue / 100 : d.discountValue),
+      discountValue: String(isPesoType(d.discountType) ? d.discountValue / 100 : d.discountValue),
       maxAvailments: String(d.maxAvailments),
       active: d.active,
     });
@@ -49,8 +56,8 @@ export function DiscountsManager() {
     const res = await saveDiscountAction({
       code: form.code,
       discountType: form.discountType,
-      // Fixed PHP is entered in pesos, stored as minor units; percentage stored as-is.
-      discountValue: form.discountType === "fixed_php" ? Math.round(rawValue * 100) : rawValue,
+      // Peso types are entered in pesos, stored as minor units; percentage stored as-is.
+      discountValue: isPesoType(form.discountType) ? Math.round(rawValue * 100) : rawValue,
       maxAvailments: Number(form.maxAvailments),
       active: form.active,
     });
@@ -80,13 +87,14 @@ export function DiscountsManager() {
           </div>
           <div>
             <label>Type</label>
-            <select value={form.discountType} onChange={(e) => setForm({ ...form, discountType: e.target.value as "percentage" | "fixed_php" })}>
+            <select value={form.discountType} onChange={(e) => setForm({ ...form, discountType: e.target.value as DiscountType })}>
               <option value="percentage">Percentage</option>
               <option value="fixed_php">Fixed PHP</option>
+              <option value="fixed_php_per_slot">PHP per Slot (per booked hour)</option>
             </select>
           </div>
           <div>
-            <label>Value {form.discountType === "percentage" ? "(%)" : "(PHP)"}</label>
+            <label>Value {form.discountType === "percentage" ? "(%)" : form.discountType === "fixed_php_per_slot" ? "(PHP/slot)" : "(PHP)"}</label>
             <input type="number" min={0} value={form.discountValue} onChange={(e) => setForm({ ...form, discountValue: e.target.value })} />
           </div>
           <div>
@@ -127,8 +135,12 @@ export function DiscountsManager() {
             {rows.map((d) => (
               <tr key={d.id}>
                 <td>{d.code}</td>
-                <td>{d.discountType === "percentage" ? "Percentage" : "Fixed PHP"}</td>
-                <td>{d.discountType === "percentage" ? `${d.discountValue}%` : `PHP ${(d.discountValue / 100).toFixed(2)}`}</td>
+                <td>{typeLabel(d.discountType)}</td>
+                <td>
+                  {d.discountType === "percentage"
+                    ? `${d.discountValue}%`
+                    : `PHP ${(d.discountValue / 100).toFixed(2)}${d.discountType === "fixed_php_per_slot" ? "/slot" : ""}`}
+                </td>
                 <td>{d.timesAvailed}</td>
                 <td>{d.maxAvailments === 0 ? "Unlimited" : d.maxAvailments}</td>
                 <td>

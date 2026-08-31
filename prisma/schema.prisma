@@ -105,6 +105,7 @@ enum PaymentMethod {
 enum DiscountType {
   percentage // discountValue = percent off (1-100)
   fixed_php // discountValue = fixed amount off, in minor units (centavos)
+  fixed_php_per_slot // discountValue = fixed amount off PER SLOT (per booked hour), in minor units
 }
 
 enum EmailOutboxStatus {

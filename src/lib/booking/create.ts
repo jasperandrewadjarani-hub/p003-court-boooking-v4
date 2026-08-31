@@ -223,7 +223,7 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
       let appliedDiscountCode: string | undefined;
       if (input.discountCode) {
         const taxableBeforePromo = cart.subtotalMinor - cart.membershipDiscountMinor;
-        const quote = await quoteDiscount(tx, input.tenantId, input.discountCode, taxableBeforePromo);
+        const quote = await quoteDiscount(tx, input.tenantId, input.discountCode, taxableBeforePromo, cart.totalHours);
         const consumed = await consumeDiscount(tx, input.tenantId, quote.discountId);
         if (!consumed) {
           throw new Error(`Discount code "${quote.code}" just reached its usage limit — please remove it and try again.`);
@@ -357,7 +357,7 @@ export async function priceCart(
     // First pass (no discount) just to derive taxableBeforePromo for the quote.
     const undiscounted = calculateCartTotal(cartItems, sharedBase);
     const taxableBeforePromo = undiscounted.subtotalMinor - undiscounted.membershipDiscountMinor;
-    discountQuote = await withTenant(tenantId, (tx) => quoteDiscount(tx, tenantId, discountCode, taxableBeforePromo));
+    discountQuote = await withTenant(tenantId, (tx) => quoteDiscount(tx, tenantId, discountCode, taxableBeforePromo, undiscounted.totalHours));
   }
 
   const discountInput: CartDiscountInput | null = discountQuote ? { type: discountQuote.type, value: discountQuote.value } : null;

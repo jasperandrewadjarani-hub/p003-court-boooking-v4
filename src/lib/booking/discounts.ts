@@ -17,7 +17,7 @@ export function normalizeDiscountCode(code: string): string {
 export interface DiscountQuote {
   discountId: string;
   code: string;
-  type: "percentage" | "fixed_php";
+  type: "percentage" | "fixed_php" | "fixed_php_per_slot";
   value: number; // raw discountValue as stored (percent 1-100, or fixed minor units)
   amountMinor: number; // computed against the taxableAmountMinor passed in
 }
@@ -34,7 +34,12 @@ export async function quoteDiscount(
   tx: Prisma.TransactionClient,
   tenantId: string,
   code: string,
-  taxableAmountMinor: number
+  taxableAmountMinor: number,
+  // Number of booked slots (= booked hours) in the cart. Only consumed by the
+  // fixed_php_per_slot type, which multiplies its per-slot value by this; the
+  // other two types ignore it. Defaults to 1 so a caller that doesn't care
+  // about per-slot discounts still gets fixed_php/percentage right.
+  slotCount = 1
 ): Promise<DiscountQuote> {
   const normalized = normalizeDiscountCode(code);
 
@@ -49,16 +54,20 @@ export async function quoteDiscount(
     throw new Error(`Discount code "${normalized}" has reached its usage limit.`);
   }
 
-  const raw =
-    discount.discountType === "percentage"
-      ? Math.round((taxableAmountMinor * discount.discountValue) / 100)
-      : discount.discountValue;
+  let raw: number;
+  if (discount.discountType === "percentage") {
+    raw = Math.round((taxableAmountMinor * discount.discountValue) / 100);
+  } else if (discount.discountType === "fixed_php_per_slot") {
+    raw = discount.discountValue * Math.max(0, Math.round(slotCount));
+  } else {
+    raw = discount.discountValue; // fixed_php — once per checkout
+  }
   const amountMinor = Math.min(Math.max(raw, 0), Math.max(taxableAmountMinor, 0));
 
   return {
     discountId: discount.id,
     code: normalized,
-    type: discount.discountType as "percentage" | "fixed_php",
+    type: discount.discountType as "percentage" | "fixed_php" | "fixed_php_per_slot",
     value: discount.discountValue,
     amountMinor,
   };
