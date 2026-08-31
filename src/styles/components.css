@@ -244,7 +244,7 @@ header.hud {
 @keyframes scan { 0% { top: 0; opacity: 1; } 100% { top: 100%; opacity: 0.2; } }
 
 .court-grid {
-  display: grid; grid-template-columns: 104px repeat(var(--court-count, 3), minmax(110px, 1fr));
+  display: grid; grid-template-columns: 116px repeat(var(--court-count, 3), minmax(110px, 1fr));
   gap: 1px; background: var(--line-grid);
   min-width: max-content; /* forces horizontal scroll instead of squeezing columns unreadably thin */
 }
@@ -266,9 +266,10 @@ header.hud {
   background: var(--bg-panel); color: var(--text-dim); font-family: var(--font-mono);
   /* Left-aligned in its own (widened) column so the range never spills under
      the first court column, and clipped rather than overflowing if it can't fit. */
-  font-size: 14px; display: flex; align-items: center; justify-content: flex-start; text-align: left;
+  font-size: 16px; display: flex; align-items: center; justify-content: flex-start; text-align: left;
   padding: 2px 6px 2px 10px; overflow: hidden;
 }
+/* Always one line (e.g. "8AM-9AM") on every screen size. */
 .tl-range { white-space: nowrap; }
 .slot {
   background: var(--bg-panel);
@@ -562,20 +563,19 @@ footer { text-align: center; padding: 30px; color: var(--text-dim); font-family:
   display: grid; width: 100%;
   /* Compact: all courts share the row width (minmax(0,1fr)) so 11 fit without
      horizontal scroll; shorter rows so more time blocks are visible at once. */
-  grid-template-columns: 62px repeat(var(--dispatch-courts), minmax(0, 1fr));
+  grid-template-columns: 74px repeat(var(--dispatch-courts), minmax(0, 1fr));
   grid-template-rows: 34px repeat(var(--dispatch-slots), 52px);
   gap: 1px; background: var(--line-grid);
 }
-/* Time range on ONE line (e.g. "9AM-10AM") in both the header and cells. */
-.dispatch-time-cell .dtc-range { white-space: nowrap; }
 .dispatch-time-head, .dispatch-court-head, .dispatch-time-cell { background: var(--bg-panel); font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
 .dispatch-time-head, .dispatch-court-head { position: sticky; top: 0; z-index: 7; padding: 5px 6px; text-transform: uppercase; letter-spacing: .5px; }
 .dispatch-time-head { left: 0; z-index: 9; display: flex; flex-direction: column; justify-content: center; }
 .dispatch-court-head { font-family: var(--font-display); color: var(--accent-cyan); font-size: 12px; line-height: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dispatch-court-head span { display: block; margin-top: 1px; font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dispatch-time-cell { position: sticky; left: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; padding: 4px 2px; font-size: 9px; line-height: 11px; color: var(--accent-cyan); box-shadow: 1px 0 0 var(--line-grid); text-align: center; }
-.dtc-range { display: flex; flex-direction: column; align-items: center; white-space: nowrap; }
-.dtc-dash { display: none; }
+.dispatch-time-cell { position: sticky; left: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; padding: 4px 3px; font-size: 12px; line-height: 13px; color: var(--accent-cyan); box-shadow: 1px 0 0 var(--line-grid); text-align: center; }
+/* One line (e.g. "9AM-10AM") with a visible dash, all screen sizes. */
+.dtc-range { white-space: nowrap; }
+.dtc-dash { margin: 0 1px; }
 .dispatch-tile {
   position: relative; min-height: 52px; height: 100%; width: 100%; border: 0; border-left: 3px solid transparent;
   padding: 4px 6px; text-align: left; cursor: pointer; color: var(--text-primary); background: var(--bg-panel);
@@ -785,16 +785,14 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   .dispatch-header { display: block; }
   .dispatch-controls { justify-content: flex-start; margin-top: 12px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
   .dispatch-filter { flex: 0 0 auto; }
-  .dispatch-grid { grid-template-columns: 58px repeat(var(--dispatch-courts), minmax(128px, 1fr)); grid-template-rows: 32px repeat(var(--dispatch-slots), 74px); }
+  .dispatch-grid { grid-template-columns: 74px repeat(var(--dispatch-courts), minmax(128px, 1fr)); grid-template-rows: 32px repeat(var(--dispatch-slots), 74px); }
   .dispatch-court-head { font-size: 12px; padding: 6px 5px; }
   .dispatch-court-head span { font-size: 8px; }
   .dispatch-time-head { left: auto; z-index: 30; will-change: transform; }
-  .dispatch-time-cell { position: relative; left: auto; z-index: 25; will-change: transform; background: var(--bg-panel); padding: 4px 2px; font-size: 9px; }
+  .dispatch-time-cell { position: relative; left: auto; z-index: 25; will-change: transform; background: var(--bg-panel); padding: 4px 3px; font-size: 12px; }
   .dispatch-time-cell, .dispatch-tile { min-height: 74px; }
-  /* Stack the time range onto two lines so the column can be narrower on mobile. */
-  .dtc-range { display: flex; flex-direction: column; align-items: center; line-height: 1.15; gap: 1px; white-space: normal; }
-  .dtc-dash { display: none; }
-  .dtc-end::before { content: '– '; }
+  /* One line + visible dash on mobile too (matches the base rule). */
+  .dtc-range { white-space: nowrap; }
   .dispatch-tile { padding: 5px 7px; gap: 1px; }
   .tile-primary { font-size: 12px; }
   .tile-secondary { font-size: 10px; }
@@ -840,12 +838,10 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   .court-grid .head { font-size: 12px; padding: 6px 4px; }
   .court-grid .head strong { font-size: 12px; }
   .court-grid .head span { font-size: 8px; margin-top: 2px; }
-  .court-grid .time-label { font-size: 8px; }
-  /* Stack the time range onto two lines so the narrow mobile column doesn't
-     clip a one-line "8:00am-9:00am" string (was cutting off leading digits). */
-  .tl-range { display: flex; flex-direction: column; align-items: center; line-height: 1.15; gap: 1px; white-space: normal; }
-  .tl-dash { display: none; }
-  .tl-end::before { content: '– '; }
+  /* One line, larger font — the compact "8AM-9AM" fits, and the grid scrolls
+     horizontally anyway, so no need to stack or shrink on mobile. */
+  .court-grid .time-label { font-size: 15px; }
+  .tl-range { white-space: nowrap; }
   .slot { min-height: 34px; }
   .slot-label { font-size: 8px; }
   .cart-bar { padding: 10px 12px; margin: 0 -10px; }
