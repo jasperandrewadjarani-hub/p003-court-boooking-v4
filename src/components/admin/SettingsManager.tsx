@@ -210,6 +210,32 @@ export function SettingsManager({ general, rules, payments, qrImages, loyalty, n
               )}
             </div>
           </div>
+          <div className="settings-grid" style={{ marginTop: 12 }}>
+            <div className="settings-field">
+              <label>Header Logo (customer app)</label>
+              <span className="dim mono" style={{ fontSize: 11, display: "block", marginBottom: 6 }}>
+                A full text/banner logo. When set, it replaces the round logo + business-name title at the top of the customer app.
+              </span>
+              <input type="file" accept="image/*" onChange={pickImage((d) => setBrandForm({ ...brandForm, headerLogoUrl: d }))} />
+              <input style={{ marginTop: 6 }} value={brandForm.headerLogoUrl.startsWith("data:") ? "" : brandForm.headerLogoUrl} onChange={(e) => setBrandForm({ ...brandForm, headerLogoUrl: e.target.value })} placeholder="…or paste an image URL" />
+            </div>
+            <div className="settings-field">
+              <label>Header Logo Preview</label>
+              {brandForm.headerLogoUrl ? (
+                <>
+                  <div className="settings-image-preview">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={brandForm.headerLogoUrl} alt="header logo" />
+                  </div>
+                  <button type="button" className="dim mono" style={{ marginTop: 6, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0, textAlign: "left" }} onClick={() => setBrandForm({ ...brandForm, headerLogoUrl: "" })}>
+                    Remove header logo
+                  </button>
+                </>
+              ) : (
+                <span className="dim mono" style={{ fontSize: 11 }}>No header logo set — using logo + name</span>
+              )}
+            </div>
+          </div>
           <button className="btn secondary" style={{ marginTop: 12 }} onClick={restoreBranding}>
             Restore Default VOLT Colors
           </button>

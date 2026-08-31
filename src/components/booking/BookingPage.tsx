@@ -19,6 +19,7 @@ interface TenantInfo {
   slug: string;
   currency: string;
   logoUrl?: string | null;
+  headerLogoUrl?: string | null;
 }
 
 function todayKey(offsetDays = 0): string {
@@ -378,13 +379,22 @@ export function BookingPage({
       </div>
 
       <header className="hud">
-        {tenant.logoUrl ? (
+        {tenant.headerLogoUrl ? (
+          // A full text/banner logo replaces the circular logo + business-name
+          // title entirely (configured in Admin → Settings → Branding).
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={tenant.logoUrl} alt={tenant.name} className="hud-logo" />
-        ) : null}
-        <h1 className="brand">
-          <span>{tenant.name}</span>
-        </h1>
+          <img src={tenant.headerLogoUrl} alt={tenant.name} className="hud-header-logo" />
+        ) : (
+          <>
+            {tenant.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={tenant.logoUrl} alt={tenant.name} className="hud-logo" />
+            ) : null}
+            <h1 className="brand">
+              <span>{tenant.name}</span>
+            </h1>
+          </>
+        )}
         <div className="brand-sub">LIVE COURT AVAILABILITY | TAP SLOTS TO BUILD YOUR BOOKING</div>
       </header>
 

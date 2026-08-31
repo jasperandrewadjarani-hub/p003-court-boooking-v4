@@ -140,6 +140,9 @@ header.hud {
   position: relative;
 }
 .hud-logo { height: 64px; margin: 0 auto 8px; display: block; object-fit: contain; }
+/* Full text/banner logo that replaces the circular logo + title. Scales down
+   to fit narrow screens; never wider than the content column. */
+.hud-header-logo { display: block; margin: 4px auto 6px; width: auto; height: auto; max-width: min(560px, 92%); max-height: 128px; object-fit: contain; }
 .brand {
   font-family: var(--font-display);
   font-weight: 700;
@@ -823,6 +826,7 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   /* --- Customer page: condense so more of the screen is usable (v3b mobile) --- */
   header.hud { padding: 12px 12px 6px; }
   .hud-logo { height: 44px; margin-bottom: 4px; }
+  .hud-header-logo { max-height: 84px; max-width: 94%; }
   .brand { font-size: 22px; letter-spacing: 1px; line-height: 1.1; }
   .brand span { text-shadow: 0 0 9px rgba(198, 255, 61, 0.4); }
   .brand-sub { font-size: 9px; letter-spacing: 1.5px; margin-top: 4px; }

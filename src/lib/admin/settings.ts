@@ -187,6 +187,10 @@ export interface BrandingSettings {
   lightOpenSlotFont: string;
   lightSelectedSlotFont: string;
   logoUrl: string;
+  // Optional full "header logo" (a text/banner logo). When set, the customer
+  // app header shows THIS image alone in place of the circular logo + the
+  // business-name title. Empty = the default logo + name treatment.
+  headerLogoUrl: string;
   // Optional per-tenant heading font. `headingFont` is a CSS family name that
   // overrides --font-display; `headingFontUrl` is a stylesheet URL (Google
   // Fonts) loaded in both shells. Empty = the app default (Rajdhani).
@@ -226,6 +230,7 @@ export const DEFAULT_BRANDING: BrandingSettings = {
   lightOpenSlotFont: "#5C8A00",
   lightSelectedSlotFont: "#0E1A12",
   logoUrl: "",
+  headerLogoUrl: "",
   headingFont: "",
   headingFontUrl: "",
 };
@@ -247,7 +252,7 @@ export async function saveBrandingSettings(tenantId: string, input: BrandingSett
   for (const key of Object.keys(DEFAULT_BRANDING) as (keyof BrandingSettings)[]) {
     const v = (input[key] ?? DEFAULT_BRANDING[key]) as string;
     // Non-color keys — stored verbatim, not HEX-validated.
-    if (key === "logoUrl" || key === "headingFont" || key === "headingFontUrl") {
+    if (key === "logoUrl" || key === "headerLogoUrl" || key === "headingFont" || key === "headingFontUrl") {
       (clean[key] as string) = v;
       continue;
     }
@@ -255,6 +260,7 @@ export async function saveBrandingSettings(tenantId: string, input: BrandingSett
     (clean[key] as string) = v;
   }
   assertInlineImageOk("Logo", clean.logoUrl);
+  assertInlineImageOk("Header logo", clean.headerLogoUrl);
   await saveSettingKey(tenantId, "branding", clean);
   // Mirror the logo to Tenant.logoUrl so the customer header / resolveTenant
   // pick it up without a second settings read.
