@@ -17,11 +17,14 @@ const POLL_MS = 20_000;
 // states that are actually used, not touch the underlying schema/enum.
 const STATUS_OPTIONS = ["", "reserved", "confirmed", "cancelled", "lapsed"];
 
-export function BookingsTable({ initialResult, currency }: { initialResult: PagedBookings; currency: string }) {
+const ANY_DISCOUNT = "__ANY__";
+
+export function BookingsTable({ initialResult, currency, discountCodes = [] }: { initialResult: PagedBookings; currency: string; discountCodes?: string[] }) {
   const [result, setResult] = useState(initialResult);
   const [dateFrom, setDateFrom] = useState(""); // empty = all dates
   const [dateTo, setDateTo] = useState("");
   const [status, setStatus] = useState("");
+  const [discount, setDiscount] = useState(""); // "" = all, ANY_DISCOUNT = any, or a specific code
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -36,7 +39,7 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
     }
     setRangeError(null);
     startTransition(async () => {
-      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
+      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, discountCode: discount || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
       setResult(r);
       setPage(targetPage);
     });
@@ -53,7 +56,7 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
     const id = setInterval(() => fetchPage(page), POLL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, status, search, page]);
+  }, [dateFrom, dateTo, status, discount, search, page]);
 
   const bookings = result.items;
   const totalPages = Math.max(1, Math.ceil(result.totalCount / result.pageSize));
@@ -85,6 +88,18 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
               ))}
             </select>
           </div>
+          <div className="field">
+            <label>Discount</label>
+            <select className="select-sm" value={discount} onChange={(e) => setDiscount(e.target.value)}>
+              <option value="">All</option>
+              <option value={ANY_DISCOUNT}>Any discount applied</option>
+              {discountCodes.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="field" style={{ flex: 1 }}>
             <label>Search (name / phone / ID)</label>
             <input type="text" className="input-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -98,6 +113,7 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
               setDateFrom("");
               setDateTo("");
               setStatus("");
+              setDiscount("");
               setSearch("");
               setRangeError(null);
               startTransition(async () => {
@@ -134,6 +150,11 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
                   <td>
                     <span className={`expand-caret ${expanded === b.id ? "open" : ""}`}>▶</span>
                     {b.reference ?? "Pending"} · {b.dateLabel}
+                    {b.discountCode && (
+                      <span className="mono" style={{ marginLeft: 8, padding: "1px 6px", borderRadius: 6, fontSize: 10, background: "color-mix(in srgb, var(--accent-optic) 16%, transparent)", color: "var(--accent-optic)", whiteSpace: "nowrap" }}>
+                        🏷 {b.discountCode} −{currency} {(b.discountAmountMinor / 100).toFixed(2)}
+                      </span>
+                    )}
                   </td>
                   <td>{b.customerName}</td>
                   <td>{labelize(b.status)}</td>
@@ -170,6 +191,14 @@ export function BookingsTable({ initialResult, currency }: { initialResult: Page
                             </span>
                           </div>
                         ))}
+                        {b.discountCode && (
+                          <div className="booking-item-line" style={{ color: "var(--accent-optic)" }}>
+                            <span>Discount · {b.discountCode}</span>
+                            <span>
+                              − {currency} {(b.discountAmountMinor / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>

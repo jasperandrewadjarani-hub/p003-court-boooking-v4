@@ -8,9 +8,15 @@ export interface BookingFilters {
   dateTo?: string;
   status?: string;
   search?: string;
+  // Filter by the promo code applied to the booking group. A specific code
+  // matches that code exactly; the sentinel "__ANY__" matches any booking that
+  // had ANY discount code applied. Empty/undefined = no discount filter.
+  discountCode?: string;
   page?: number; // 1-based
   pageSize?: number;
 }
+
+export const ANY_DISCOUNT = "__ANY__";
 
 export interface PagedBookings {
   items: AdminBookingGroup[];
@@ -41,6 +47,8 @@ export interface AdminBookingGroup {
   players: number;
   items: AdminBookingItem[];
   receiptId: string | null;
+  discountCode: string | null;
+  discountAmountMinor: number;
 }
 
 /** Matches v2's adminListBookings — date range, status, and a name/phone/
@@ -66,6 +74,9 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
       where.bookings = { some: { localDate } };
     }
     if (filters.status) where.status = filters.status;
+    if (filters.discountCode) {
+      where.discountCode = filters.discountCode === ANY_DISCOUNT ? { not: null } : filters.discountCode;
+    }
     if (filters.search) {
       const q = filters.search;
       where.OR = [
@@ -112,7 +123,24 @@ function mapAdminGroup(g: any): AdminBookingGroup {
     players: g.bookings[0]?.players ?? 1,
     items: compileSlots(g.bookings.map((b: any) => ({ courtName: b.court.name, start: formatUtcTime(b.startsAt), end: formatUtcTime(b.endsAt), priceMinor: b.priceMinor }))),
     receiptId: g.receipts?.[0]?.id ?? null,
+    discountCode: g.discountCode ?? null,
+    discountAmountMinor: g.discountAmountMinor ?? 0,
   };
+}
+
+/** Distinct promo codes that have actually been applied to bookings (snapshot
+ *  strings, so codes of since-deleted discounts still appear) — populates the
+ *  Bookings-tab discount filter dropdown. */
+export async function getUsedDiscountCodes(tenantId: string): Promise<string[]> {
+  return withTenant(tenantId, async (tx) => {
+    const rows = await tx.bookingGroup.findMany({
+      where: { tenantId, discountCode: { not: null } },
+      distinct: ["discountCode"],
+      select: { discountCode: true },
+      orderBy: { discountCode: "asc" },
+    });
+    return rows.map((r) => r.discountCode).filter((c): c is string => !!c);
+  });
 }
 
 /** Single booking group by id — used by the dispatch grid to open the ops
