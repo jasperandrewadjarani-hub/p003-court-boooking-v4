@@ -217,8 +217,8 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                   </td>
                   <td className="mono" style={{ whiteSpace: "nowrap", fontSize: 12 }}>{b.createdAtLabel}</td>
                   <td>{b.customerName}</td>
-                  <td><span style={{ color: statusColor(b.status), fontWeight: 600 }}>{labelize(b.status)}</span></td>
-                  <td><span style={{ color: paymentColor(b.paymentStatus), fontWeight: 600 }}>{labelize(b.paymentStatus)}</span></td>
+                  <td><span style={{ color: statusColor(b.status) }}>{labelize(b.status)}</span></td>
+                  <td><span style={{ color: paymentColor(b.paymentStatus) }}>{labelize(b.paymentStatus)}</span></td>
                   <td>
                     {currency} {formatMoney(b.amountPaidMinor)}
                   </td>

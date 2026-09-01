@@ -229,7 +229,7 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
     <div className="panel dispatch-panel">
       <div className="dispatch-header">
         <div>
-          <div className="panel__title" style={{ margin: 0 }}>
+          <div className="panel__title" style={{ margin: 0, fontSize: 22 }}>
             Court Dispatch Grid
           </div>
           <p className="dim mono" style={{ fontSize: 11, margin: 0 }}>
