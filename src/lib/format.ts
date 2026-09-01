@@ -29,6 +29,12 @@ export function labelize(value: string | null | undefined): string {
     .join(" ");
 }
 
+/** Money in minor units → "1,234.56" (thousands separators, 2 decimals).
+ *  Callers prepend the currency symbol. */
+export function formatMoney(minor: number): string {
+  return ((minor ?? 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export interface SlotItem {
   courtName: string;
   start: string; // "HH:MM"

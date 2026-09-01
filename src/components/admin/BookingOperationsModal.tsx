@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusAction, cancelBookingGroupAction, getBookingGroupAction } from "@/app/admin/actions";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
-import { labelize } from "@/lib/format";
+import { labelize, formatMoney } from "@/lib/format";
 
 const PAYMENT_METHODS = ["cash", "gcash", "maya", "gotyme", "credit_card", "bank_transfer"] as const;
 // v3b's status vocabulary is wider (checked_in/playing/finished/no_show) for
@@ -191,7 +191,7 @@ export function BookingOperationsModal({
                 {item.courtName} {formatTime(item.start)}–{formatTime(item.end)}
               </span>
               <span>
-                {currency} {(item.priceMinor / 100).toFixed(2)}
+                {currency} {formatMoney(item.priceMinor)}
               </span>
             </div>
           ))}
@@ -202,19 +202,19 @@ export function BookingOperationsModal({
           <div>
             Total
             <strong>
-              {currency} {(booking.totalMinor / 100).toFixed(2)}
+              {currency} {formatMoney(booking.totalMinor)}
             </strong>
           </div>
           <div>
             Paid
             <strong>
-              {currency} {(booking.amountPaidMinor / 100).toFixed(2)}
+              {currency} {formatMoney(booking.amountPaidMinor)}
             </strong>
           </div>
           <div>
             Balance
             <strong>
-              {currency} {(balanceMinor / 100).toFixed(2)}
+              {currency} {formatMoney(balanceMinor)}
             </strong>
           </div>
         </div>

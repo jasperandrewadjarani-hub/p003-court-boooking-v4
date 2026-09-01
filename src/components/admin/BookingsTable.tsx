@@ -1,10 +1,23 @@
 "use client";
 
-import { Fragment, useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import { listBookingsAction } from "@/app/admin/actions";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
 import type { AdminBookingGroup, PagedBookings } from "@/lib/admin/bookings";
-import { labelize } from "@/lib/format";
+import { labelize, formatMoney } from "@/lib/format";
+
+// Status/payment font colors — same themed tokens the court dispatch grid uses.
+function statusColor(status: string): string {
+  if (status === "confirmed" || status === "checked_in" || status === "playing" || status === "finished") return "var(--status-confirmed)";
+  if (status === "reserved") return "var(--status-reserved)";
+  return "var(--status-inactive)"; // cancelled / lapsed / no_show
+}
+function paymentColor(p: string): string {
+  if (p === "paid") return "var(--payment-paid)";
+  if (p === "awaiting_verification" || p === "partial") return "var(--payment-awaiting)";
+  if (p === "unpaid") return "var(--payment-unpaid)";
+  return "var(--text-dim)"; // refunded
+}
 
 const PAGE_SIZE = 20;
 // Live update every 20s (v3b's own dispatch-grid poll cadence) so a newly
@@ -59,9 +72,15 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
   }
   const sortArrow = (field: SortField) => (sortBy === field ? (sortDir === "asc" ? " ▲" : " ▼") : "");
 
-  function applyFilters() {
-    fetchPage(1); // any filter change starts back at page 1
-  }
+  // Auto-apply: any filter/sort change re-filters the list (debounced so typing
+  // a name doesn't fire a request per keystroke) — no "Filter" button needed.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    const h = setTimeout(() => fetchPage(1), 300);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, status, paymentStatus, discount, hideFuture, search, sortBy, sortDir]);
 
   // Quiet background refresh — re-fetches the current page/filters without
   // disturbing scroll position or an open modal (a booking being managed
@@ -83,6 +102,19 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
         <h2>Bookings</h2>
       </div>
       <div className="panel">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <span className="mono dim" style={{ fontSize: 12, textTransform: "none", letterSpacing: 0 }}>Hide Future Bookings</span>
+          <button
+            type="button"
+            className={`toggle-switch ${hideFuture ? "on" : ""}`}
+            role="switch"
+            aria-checked={hideFuture}
+            aria-label="Hide future bookings"
+            onClick={() => setHideFuture((v) => !v)}
+          >
+            <span className="toggle-switch-knob" />
+          </button>
+        </div>
         <div className="admin-toolbar">
           <div className="field">
             <label>From (booking date)</label>
@@ -124,20 +156,10 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
               ))}
             </select>
           </div>
-          <div className="field">
-            <label>Timeframe</label>
-            <label className="mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, textTransform: "none", cursor: "pointer", padding: "6px 0" }}>
-              <input type="checkbox" style={{ width: "auto" }} checked={hideFuture} onChange={(e) => setHideFuture(e.target.checked)} />
-              Hide future bookings
-            </label>
-          </div>
           <div className="field" style={{ flex: 1 }}>
             <label>Search (name / phone / ID)</label>
             <input type="text" className="input-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <button className="btn secondary" onClick={applyFilters} disabled={isPending}>
-            Filter
-          </button>
           <button
             className="btn secondary"
             onClick={() => {
@@ -189,19 +211,19 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                     {b.reference ?? "Pending"} · {b.dateLabel}
                     {b.discountCode && (
                       <span className="mono" style={{ marginLeft: 8, padding: "1px 6px", borderRadius: 6, fontSize: 10, background: "color-mix(in srgb, var(--accent-optic) 16%, transparent)", color: "var(--accent-optic)", whiteSpace: "nowrap" }}>
-                        🏷 {b.discountCode} −{currency} {(b.discountAmountMinor / 100).toFixed(2)}
+                        🏷 {b.discountCode} −{currency} {formatMoney(b.discountAmountMinor)}
                       </span>
                     )}
                   </td>
                   <td className="mono" style={{ whiteSpace: "nowrap", fontSize: 12 }}>{b.createdAtLabel}</td>
                   <td>{b.customerName}</td>
-                  <td>{labelize(b.status)}</td>
-                  <td>{labelize(b.paymentStatus)}</td>
+                  <td><span style={{ color: statusColor(b.status), fontWeight: 600 }}>{labelize(b.status)}</span></td>
+                  <td><span style={{ color: paymentColor(b.paymentStatus), fontWeight: 600 }}>{labelize(b.paymentStatus)}</span></td>
                   <td>
-                    {currency} {(b.amountPaidMinor / 100).toFixed(2)}
+                    {currency} {formatMoney(b.amountPaidMinor)}
                   </td>
                   <td>
-                    {currency} {(b.totalMinor / 100).toFixed(2)}
+                    {currency} {formatMoney(b.totalMinor)}
                   </td>
                   <td className="action-cell">
                     <button
@@ -225,7 +247,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                               {item.courtName} {item.start}–{item.end}
                             </span>
                             <span>
-                              {currency} {(item.priceMinor / 100).toFixed(2)}
+                              {currency} {formatMoney(item.priceMinor)}
                             </span>
                           </div>
                         ))}
@@ -233,7 +255,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                           <div className="booking-item-line" style={{ color: "var(--accent-optic)" }}>
                             <span>Discount · {b.discountCode}</span>
                             <span>
-                              − {currency} {(b.discountAmountMinor / 100).toFixed(2)}
+                              − {currency} {formatMoney(b.discountAmountMinor)}
                             </span>
                           </div>
                         )}

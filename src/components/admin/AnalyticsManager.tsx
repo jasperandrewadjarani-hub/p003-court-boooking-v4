@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { LineChart, BarChart, StackedBarChart, DoughnutChart } from "@/components/admin/Charts";
 import { fetchAnalyticsAction } from "@/app/admin/actions";
 import type { AnalyticsData } from "@/lib/admin/analytics";
+import { formatMoney } from "@/lib/format";
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -84,8 +85,8 @@ export function AnalyticsManager({ initialData, currency }: { initialData: Analy
         <StatCard label="Confirmed + Reserved" value={data.confirmedReservedCount} />
         <StatCard label="Cancelled" value={data.cancelledCount} />
         <StatCard label="Lapsed" value={data.lapsedCount} />
-        <StatCard label="Total Revenue" value={`${currency} ${(data.totalRevenueMinor / 100).toFixed(2)}`} />
-        <StatCard label="Avg Booking Value" value={`${currency} ${(data.avgValueMinor / 100).toFixed(2)}`} />
+        <StatCard label="Total Revenue" value={`${currency} ${formatMoney(data.totalRevenueMinor)}`} />
+        <StatCard label="Avg Booking Value" value={`${currency} ${formatMoney(data.avgValueMinor)}`} />
         <StatCard label="Cancellation Rate" value={`${data.cancellationRatePercent}%`} />
       </div>
       <p className="dim mono" style={{ fontSize: 11, marginTop: -8 }}>
