@@ -214,6 +214,14 @@ export function DispatchGrid({ initialGrid, currency, memberships }: { initialGr
     if (ci < 1) return false;
     const cur = courtsV[ci].slots[i], prev = courtsV[ci - 1].slots[i];
     if (!key(cur) || key(cur) !== key(prev) || cur.state !== prev.state) return false;
+    // The left neighbour must itself be the TOP of its vertical run at this row.
+    // A horizontal rectangle shares one top row across all its columns, so if the
+    // left cell is a vertical continuation of a rectangle anchored HIGHER up, that
+    // rectangle started where THIS column was still vacant and never extended into
+    // it. Skipping here anyway (the old bug) left this cell uncovered by any
+    // rectangle → a blank/black gap. Happens whenever a booking group occupies a
+    // court for fewer hours than the court to its left (e.g. C1/C2 2-6pm, C3 3-6pm).
+    if (skipRowCont(courtsV[ci - 1].slots, i)) return false;
     return rowSpanAt(courtsV[ci].slots, i) === rowSpanAt(courtsV[ci - 1].slots, i);
   };
 
