@@ -58,6 +58,8 @@ export async function sendViaResend(email: OutgoingEmail): Promise<void> {
 
 /** Minimal branded HTML wrapper shared by all templates — keeps delivery
  *  looking intentional without pulling in a templating dependency. */
+const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+
 function shell(title: string, bodyHtml: string): string {
   return `<!doctype html><html><body style="margin:0;background:#060A10;font-family:Segoe UI,Arial,sans-serif;color:#E7F6F2;padding:24px">
     <div style="max-width:480px;margin:0 auto;background:#0D1520;border:1px solid #1C2733;border-radius:12px;padding:28px">
@@ -89,6 +91,20 @@ export function renderTemplate(template: string, payload: Record<string, unknown
     case template === "payment_confirmation": {
       const subject = "Payment received";
       return { subject, html: shell(subject, `<p>${p.body ?? "We've recorded your payment. Thank you!"}</p>`) };
+    }
+    case template === "admin_payment_alert": {
+      // Customer-controlled fields (name) are HTML-escaped to keep the email safe.
+      const subject = p.subject || "Payment submitted for verification";
+      return {
+        subject,
+        html: shell("Payment submitted for verification", `
+          <p style="margin:0 0 12px">A customer submitted a payment that needs verifying.</p>
+          <p style="margin:0 0 4px"><strong>Booking:</strong> ${esc(p.reference)}</p>
+          <p style="margin:0 0 4px"><strong>Customer:</strong> ${esc(p.customerName)}</p>
+          <p style="margin:0 0 4px"><strong>Play date:</strong> ${esc(p.playDate)}</p>
+          <p style="margin:0 0 12px"><strong>Total:</strong> PHP ${esc(p.total)}</p>
+          <p style="margin:0;font-size:12px;color:#7C93A3">Open the admin dashboard to review the receipt and confirm the payment.</p>`),
+      };
     }
     default: {
       const subject = p.subject || "Notification";

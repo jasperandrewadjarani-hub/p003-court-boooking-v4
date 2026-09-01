@@ -3,6 +3,7 @@
 const LABEL_SPECIAL: Record<string, string> = {
   gcash: "GCash",
   maya: "Maya",
+  gotyme: "GoTyme",
   credit_card: "Credit Card",
   bank_transfer: "Bank Transfer",
   awaiting_verification: "Awaiting Verification",

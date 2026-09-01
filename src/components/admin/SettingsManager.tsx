@@ -26,6 +26,7 @@ interface Props {
   notifications: NotificationSettings;
   performance: PerformanceSettings;
   branding: BrandingSettings;
+  emailUsage?: { sent: number; limit: number };
 }
 
 // Branding swatch groups (v3b Settings "Branding & Logo" layout).
@@ -46,7 +47,7 @@ const STATE_SWATCHES: [keyof BrandingSettings, string][] = [
   ["unpaid", "Unpaid Medal"], ["awaiting", "Awaiting Verification Medal"], ["paid", "Paid Medal"],
 ];
 
-export function SettingsManager({ general, rules, payments, qrImages, loyalty, notifications, performance, branding }: Props) {
+export function SettingsManager({ general, rules, payments, qrImages, loyalty, notifications, performance, branding, emailUsage }: Props) {
   const [generalForm, setGeneralForm] = useState(general);
   const [rulesForm, setRulesForm] = useState(rules);
   const [paymentsForm, setPaymentsForm] = useState(payments);
@@ -357,6 +358,14 @@ export function SettingsManager({ general, rules, payments, qrImages, loyalty, n
         </div>
 
         <div className="settings-section-title">Reports &amp; Notifications</div>
+        {emailUsage && (
+          <p className="dim mono" style={{ fontSize: 12, marginTop: -6, marginBottom: 8 }}>
+            📧 Emails sent (last 24h): <strong style={{ color: emailUsage.sent >= emailUsage.limit * 0.8 ? "var(--payment-unpaid)" : "var(--accent-optic)" }}>{emailUsage.sent}</strong> / ~{emailUsage.limit} daily Gmail limit (shared across all facilities).
+          </p>
+        )}
+        <p className="dim mono" style={{ fontSize: 11, marginBottom: 10 }}>
+          Payment alerts: turn on <strong>Admin Receipt Alert</strong> and set <strong>Admin Emails</strong> below — staff get an email whenever a customer submits a payment for verification.
+        </p>
         <div className="settings-grid">
           {(
             [

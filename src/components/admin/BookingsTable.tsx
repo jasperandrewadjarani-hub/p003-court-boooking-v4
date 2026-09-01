@@ -16,16 +16,22 @@ const POLL_MS = 20_000;
 // writes those — client asked to trim the admin-facing UI to just the four
 // states that are actually used, not touch the underlying schema/enum.
 const STATUS_OPTIONS = ["", "reserved", "confirmed", "cancelled", "lapsed"];
+const PAYMENT_STATUS_OPTIONS = ["", "unpaid", "awaiting_verification", "partial", "paid", "refunded"];
 
 const ANY_DISCOUNT = "__ANY__";
+type SortField = "createdAt" | "customer" | "status" | "paymentStatus" | "amountPaid" | "total";
 
 export function BookingsTable({ initialResult, currency, discountCodes = [] }: { initialResult: PagedBookings; currency: string; discountCodes?: string[] }) {
   const [result, setResult] = useState(initialResult);
   const [dateFrom, setDateFrom] = useState(""); // empty = all dates
   const [dateTo, setDateTo] = useState("");
   const [status, setStatus] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("");
   const [discount, setDiscount] = useState(""); // "" = all, ANY_DISCOUNT = any, or a specific code
+  const [hideFuture, setHideFuture] = useState(false); // only today & earlier
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<SortField>("createdAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminBookingGroup | null>(null);
@@ -39,11 +45,19 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
     }
     setRangeError(null);
     startTransition(async () => {
-      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, discountCode: discount || undefined, search: search || undefined, page: targetPage, pageSize: PAGE_SIZE });
+      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, paymentStatus: paymentStatus || undefined, discountCode: discount || undefined, hideFuture: hideFuture || undefined, search: search || undefined, sortBy, sortDir, page: targetPage, pageSize: PAGE_SIZE });
       setResult(r);
       setPage(targetPage);
     });
   }
+
+  // Click a sortable column header: toggle direction if it's the active column,
+  // else switch to it (default descending).
+  function toggleSort(field: SortField) {
+    if (sortBy === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortBy(field); setSortDir("desc"); }
+  }
+  const sortArrow = (field: SortField) => (sortBy === field ? (sortDir === "asc" ? " ▲" : " ▼") : "");
 
   function applyFilters() {
     fetchPage(1); // any filter change starts back at page 1
@@ -56,7 +70,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
     const id = setInterval(() => fetchPage(page), POLL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, status, discount, search, page]);
+  }, [dateFrom, dateTo, status, paymentStatus, discount, hideFuture, search, sortBy, sortDir, page]);
 
   const bookings = result.items;
   const totalPages = Math.max(1, Math.ceil(result.totalCount / result.pageSize));
@@ -89,6 +103,16 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
             </select>
           </div>
           <div className="field">
+            <label>Payment</label>
+            <select className="select-sm" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
+              {PAYMENT_STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s === "" ? "All" : labelize(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
             <label>Discount</label>
             <select className="select-sm" value={discount} onChange={(e) => setDiscount(e.target.value)}>
               <option value="">All</option>
@@ -99,6 +123,13 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="field">
+            <label>Timeframe</label>
+            <label className="mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, textTransform: "none", cursor: "pointer", padding: "6px 0" }}>
+              <input type="checkbox" style={{ width: "auto" }} checked={hideFuture} onChange={(e) => setHideFuture(e.target.checked)} />
+              Hide future bookings
+            </label>
           </div>
           <div className="field" style={{ flex: 1 }}>
             <label>Search (name / phone / ID)</label>
@@ -113,11 +144,15 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
               setDateFrom("");
               setDateTo("");
               setStatus("");
+              setPaymentStatus("");
               setDiscount("");
+              setHideFuture(false);
               setSearch("");
+              setSortBy("createdAt");
+              setSortDir("desc");
               setRangeError(null);
               startTransition(async () => {
-                const r = await listBookingsAction({ page: 1, pageSize: PAGE_SIZE });
+                const r = await listBookingsAction({ page: 1, pageSize: PAGE_SIZE, sortBy: "createdAt", sortDir: "desc" });
                 setResult(r);
                 setPage(1);
               });
@@ -131,15 +166,17 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
         <p className="dim mono" style={{ fontSize: 11 }}>
           Click a booking row to expand its courts/time slots. A booking made across multiple courts shares one Booking ID.
         </p>
+        <p className="dim mono" style={{ fontSize: 11, marginTop: -4 }}>Click a column header (↕) to sort.</p>
         <table className="admin-table">
           <thead>
             <tr>
               <th>ID / Date</th>
-              <th>Customer</th>
-              <th>Status</th>
-              <th>Payment</th>
-              <th>Amount Paid</th>
-              <th>Total</th>
+              <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("createdAt")}>Made{sortArrow("createdAt")}{sortBy !== "createdAt" ? " ↕" : ""}</th>
+              <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("customer")}>Customer{sortArrow("customer")}{sortBy !== "customer" ? " ↕" : ""}</th>
+              <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("status")}>Status{sortArrow("status")}{sortBy !== "status" ? " ↕" : ""}</th>
+              <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("paymentStatus")}>Payment{sortArrow("paymentStatus")}{sortBy !== "paymentStatus" ? " ↕" : ""}</th>
+              <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("amountPaid")}>Amount Paid{sortArrow("amountPaid")}{sortBy !== "amountPaid" ? " ↕" : ""}</th>
+              <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("total")}>Total{sortArrow("total")}{sortBy !== "total" ? " ↕" : ""}</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -156,6 +193,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                       </span>
                     )}
                   </td>
+                  <td className="mono" style={{ whiteSpace: "nowrap", fontSize: 12 }}>{b.createdAtLabel}</td>
                   <td>{b.customerName}</td>
                   <td>{labelize(b.status)}</td>
                   <td>{labelize(b.paymentStatus)}</td>
@@ -179,7 +217,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                 </tr>
                 {expanded === b.id && (
                   <tr className="booking-items-row">
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="booking-items-inner">
                         {b.items.map((item, i) => (
                           <div className="booking-item-line" key={i}>

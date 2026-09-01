@@ -22,7 +22,7 @@ export interface FrontdeskBookingInput {
   // after the booking is created, so front desk doesn't need a second trip
   // to the Bookings tab just to take cash at the counter.
   amountPaidMinor?: number;
-  paymentMethod?: "cash" | "gcash" | "maya" | "credit_card" | "bank_transfer";
+  paymentMethod?: "cash" | "gcash" | "maya" | "credit_card" | "bank_transfer" | "gotyme";
 }
 
 /**

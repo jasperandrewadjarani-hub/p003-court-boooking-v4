@@ -12,7 +12,7 @@ import type { Prisma } from "@/generated/prisma/client";
  */
 export async function recordPayment(
   tx: Prisma.TransactionClient,
-  args: { tenantId: string; bookingGroupId: string; method: "cash" | "gcash" | "maya" | "credit_card" | "bank_transfer"; amountMinor: number; staffUserId: string }
+  args: { tenantId: string; bookingGroupId: string; method: "cash" | "gcash" | "maya" | "credit_card" | "bank_transfer" | "gotyme"; amountMinor: number; staffUserId: string }
 ) {
   const group = await tx.bookingGroup.findUnique({ where: { id: args.bookingGroupId } });
   if (!group) throw new Error("Booking not found.");

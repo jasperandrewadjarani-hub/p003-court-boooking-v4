@@ -4,6 +4,7 @@ import { withTenant } from "@/lib/tenant/withTenant";
 import { resolveTenant } from "@/lib/tenant/resolve";
 import { getCurrentCustomer } from "@/lib/auth/customerAuth";
 import { storeReceipt } from "@/lib/storage/receipts";
+import { notifyPaymentSubmitted } from "@/lib/email/notifications";
 
 /** Matches v2's uploadCustomerReceipt: the signed-in customer uploads proof
  * of payment for their own booking group; flips paymentStatus to
@@ -43,6 +44,10 @@ export async function uploadReceiptAction(bookingGroupId: string, fileBytes: Arr
         await tx.bookingGroup.update({ where: { id: bookingGroupId }, data: { paymentStatus: "awaiting_verification" } });
       }
     });
+
+    // Notify staff that a payment was submitted (best-effort; never blocks the
+    // upload). Gated by the Admin Receipt Alert toggle + recipient list.
+    await notifyPaymentSubmitted(tenant.id, bookingGroupId);
 
     return { ok: true as const };
   } catch (err) {

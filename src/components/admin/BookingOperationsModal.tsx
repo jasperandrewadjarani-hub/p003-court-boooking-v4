@@ -5,7 +5,7 @@ import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusActio
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
 import { labelize } from "@/lib/format";
 
-const PAYMENT_METHODS = ["cash", "gcash", "maya", "credit_card", "bank_transfer"] as const;
+const PAYMENT_METHODS = ["cash", "gcash", "maya", "gotyme", "credit_card", "bank_transfer"] as const;
 // v3b's status vocabulary is wider (checked_in/playing/finished/no_show) for
 // possible future front-desk flows, but nothing in this deployment ever
 // writes those — client asked to trim the admin-facing UI to just the four

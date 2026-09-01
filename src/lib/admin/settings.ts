@@ -108,6 +108,16 @@ export async function saveNotificationSettings(tenantId: string, input: Notifica
   return saveSettingKey(tenantId, "notification_settings", input);
 }
 
+/** Emails actually sent for this facility in the last 24h, against the Gmail
+ *  SMTP soft cap (~500/day, POOLED across all facilities on the shared account —
+ *  so this facility's own count is a lower bound on total usage). Powers the
+ *  Settings "email limit" gauge. */
+export async function getEmailUsageLast24h(tenantId: string): Promise<{ sent: number; limit: number }> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const sent = await withTenant(tenantId, (tx) => tx.emailOutbox.count({ where: { tenantId, status: "sent", sentAt: { gte: since } } }));
+  return { sent, limit: 500 };
+}
+
 // booking_rules and payment_settings reuse the exact same accessor pattern
 // as their read-side counterparts (availability.ts / paymentSettings.ts),
 // duplicated here only for the write side since those modules are

@@ -61,7 +61,7 @@ interface SelectedSlot {
 
 type Filter = "all" | "paid" | "unpaid" | "vacant";
 
-const PAYMENT_METHODS = ["cash", "gcash", "maya", "credit_card", "bank_transfer"] as const;
+const PAYMENT_METHODS = ["cash", "gcash", "maya", "gotyme", "credit_card", "bank_transfer"] as const;
 
 /** v3b Dispatch Grid — admin live schedule. Vacant tiles are multi-selectable
  * to build a walk-in booking OR to block; blocked tiles are selectable to

@@ -12,9 +12,15 @@ export interface BookingFilters {
   // matches that code exactly; the sentinel "__ANY__" matches any booking that
   // had ANY discount code applied. Empty/undefined = no discount filter.
   discountCode?: string;
+  paymentStatus?: string; // filter by BookingGroup.paymentStatus
+  hideFuture?: boolean; // show only bookings whose play date is today or earlier
+  sortBy?: SortField; // clickable-column sort
+  sortDir?: "asc" | "desc";
   page?: number; // 1-based
   pageSize?: number;
 }
+
+export type SortField = "createdAt" | "customer" | "status" | "paymentStatus" | "amountPaid" | "total";
 
 export const ANY_DISCOUNT = "__ANY__";
 
@@ -49,6 +55,7 @@ export interface AdminBookingGroup {
   receiptId: string | null;
   discountCode: string | null;
   discountAmountMinor: number;
+  createdAtLabel: string; // when the booking was made (Manila time)
 }
 
 /** Matches v2's adminListBookings — date range, status, and a name/phone/
@@ -67,13 +74,18 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
     const where: any = { tenantId };
     // Filter by the booking's PLAY date (the date shown on each row), not its
     // creation time — a group matches if any of its bookings fall in the range.
-    if (filters.dateFrom || filters.dateTo) {
-      const localDate: any = {};
-      if (filters.dateFrom) localDate.gte = new Date(filters.dateFrom + "T00:00:00.000Z");
-      if (filters.dateTo) localDate.lte = new Date(filters.dateTo + "T00:00:00.000Z");
-      where.bookings = { some: { localDate } };
+    // "hideFuture" caps the upper bound at today (UTC calendar date = the app's
+    // "today"), so only today's and past bookings show.
+    const localDate: any = {};
+    if (filters.dateFrom) localDate.gte = new Date(filters.dateFrom + "T00:00:00.000Z");
+    if (filters.dateTo) localDate.lte = new Date(filters.dateTo + "T00:00:00.000Z");
+    if (filters.hideFuture) {
+      const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
+      if (!localDate.lte || localDate.lte > today) localDate.lte = today;
     }
+    if (Object.keys(localDate).length) where.bookings = { some: { localDate } };
     if (filters.status) where.status = filters.status;
+    if (filters.paymentStatus) where.paymentStatus = filters.paymentStatus;
     if (filters.discountCode) {
       where.discountCode = filters.discountCode === ANY_DISCOUNT ? { not: null } : filters.discountCode;
     }
@@ -87,11 +99,20 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
       ];
     }
 
+    const dir: "asc" | "desc" = filters.sortDir === "asc" ? "asc" : "desc";
+    const orderBy =
+      filters.sortBy === "customer" ? { customer: { firstName: dir } } :
+      filters.sortBy === "status" ? { status: dir } :
+      filters.sortBy === "paymentStatus" ? { paymentStatus: dir } :
+      filters.sortBy === "amountPaid" ? { amountPaidMinor: dir } :
+      filters.sortBy === "total" ? { totalMinor: dir } :
+      { createdAt: dir }; // default (and "createdAt")
+
     const [totalCount, groups] = await Promise.all([
       tx.bookingGroup.count({ where }),
       tx.bookingGroup.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
@@ -125,7 +146,15 @@ function mapAdminGroup(g: any): AdminBookingGroup {
     receiptId: g.receipts?.[0]?.id ?? null,
     discountCode: g.discountCode ?? null,
     discountAmountMinor: g.discountAmountMinor ?? 0,
+    createdAtLabel: g.createdAt ? formatMadeAt(g.createdAt) : "",
   };
+}
+
+// "Sep 1, 2026, 2:30 PM" in Manila time — createdAt is a real instant (now() at
+// booking creation), so a tz conversion here is correct (unlike the floating-UTC
+// slot times).
+function formatMadeAt(d: Date): string {
+  return d.toLocaleString("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 }
 
 /** Distinct promo codes that have actually been applied to bookings (snapshot

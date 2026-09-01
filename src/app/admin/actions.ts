@@ -128,7 +128,7 @@ export async function updateBookingGroupAction(bookingGroupId: string, fields: P
   }
 }
 
-export async function recordPaymentAction(bookingGroupId: string, method: "cash" | "gcash" | "maya" | "credit_card" | "bank_transfer", amountMinor: number) {
+export async function recordPaymentAction(bookingGroupId: string, method: "cash" | "gcash" | "maya" | "credit_card" | "bank_transfer" | "gotyme", amountMinor: number) {
   const tenant = await resolveTenant();
   const staff = await requireStaff();
   try {
