@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusAction, cancelBookingGroupAction, getBookingGroupAction } from "@/app/admin/actions";
+import { updateBookingGroupAction, recordPaymentAction, updateBookingStatusAction, cancelBookingGroupAction, deleteBookingGroupAction, getBookingGroupAction } from "@/app/admin/actions";
 import type { AdminBookingGroup } from "@/lib/admin/bookings";
-import { labelize, formatMoney } from "@/lib/format";
+import { labelize, formatMoney, formatTimeAmPm } from "@/lib/format";
 
 const PAYMENT_METHODS = ["cash", "gcash", "maya", "gotyme", "credit_card", "bank_transfer"] as const;
 // v3b's status vocabulary is wider (checked_in/playing/finished/no_show) for
@@ -12,11 +12,6 @@ const PAYMENT_METHODS = ["cash", "gcash", "maya", "gotyme", "credit_card", "bank
 // states actually used. The underlying schema/enum is untouched.
 const STATUSES = ["reserved", "confirmed", "cancelled", "lapsed"] as const;
 
-function formatTime(hhmm: string): string {
-  const [h, m] = hhmm.split(":").map(Number);
-  const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
-}
 
 /** Matches v2's Edit Booking modal — contact/notes edit, payment ledger,
  * status transitions, cancel. Court/date/time are intentionally not
@@ -135,6 +130,19 @@ export function BookingOperationsModal({
     else setError(res.error);
   }
 
+  const [delPassword, setDelPassword] = useState("");
+  const [delOpen, setDelOpen] = useState(false);
+  async function del() {
+    if (!delPassword) { setError("Enter the super-admin password to delete."); return; }
+    if (!window.confirm("PERMANENTLY delete this booking, its payments and receipt? This cannot be undone.")) return;
+    setPending(true);
+    setError(null);
+    const res = await deleteBookingGroupAction(booking.id, delPassword);
+    setPending(false);
+    if (res.ok) onChanged();
+    else setError(res.error);
+  }
+
   const balanceMinor = booking.totalMinor - booking.amountPaidMinor;
 
   return (
@@ -188,7 +196,7 @@ export function BookingOperationsModal({
           {booking.items.map((item, i) => (
             <div className="booking-item-line" key={i}>
               <span>
-                {item.courtName} {formatTime(item.start)}–{formatTime(item.end)}
+                {item.courtName} {formatTimeAmPm(item.start)}–{formatTimeAmPm(item.end)}
               </span>
               <span>
                 {currency} {formatMoney(item.priceMinor)}
@@ -276,7 +284,31 @@ export function BookingOperationsModal({
         <button className="btn danger block" style={{ marginTop: 10 }} onClick={cancel} disabled={pending}>
           Cancel Booking
         </button>
-        <button className="btn secondary block" style={{ marginTop: 10 }} onClick={onClose}>
+
+        <div className="settings-section-title" style={{ marginTop: 18, color: "var(--accent-magenta)" }}>Danger Zone</div>
+        {!delOpen ? (
+          <button className="btn danger block" onClick={() => setDelOpen(true)} disabled={pending}>
+            Delete Booking Permanently
+          </button>
+        ) : (
+          <>
+            <p className="dim mono" style={{ fontSize: 11, textTransform: "none", letterSpacing: 0, margin: "0 0 8px" }}>
+              This permanently removes the booking, its payments and receipt — it cannot be undone. Requires the super-admin password.
+            </p>
+            <label>Super-Admin Password</label>
+            <input type="password" value={delPassword} onChange={(e) => setDelPassword(e.target.value)} autoComplete="off" />
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button className="btn danger" style={{ flex: 1 }} onClick={del} disabled={pending}>
+                Confirm Delete
+              </button>
+              <button className="btn secondary" style={{ flex: 1 }} onClick={() => { setDelOpen(false); setDelPassword(""); }} disabled={pending}>
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+
+        <button className="btn secondary block" style={{ marginTop: 14 }} onClick={onClose}>
           Close Manage Booking Form
         </button>
       </div>

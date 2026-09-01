@@ -3,7 +3,7 @@
 import { resolveTenant } from "@/lib/tenant/resolve";
 import { requireStaff } from "@/lib/auth/staffAuth";
 import { getDispatchGrid } from "@/lib/admin/dispatchGrid";
-import { listBookings, getBookingGroupById, type BookingFilters } from "@/lib/admin/bookings";
+import { listBookings, getBookingGroupById, deleteBookingGroup, type BookingFilters } from "@/lib/admin/bookings";
 import { recordPayment } from "@/lib/admin/payments";
 import { releaseDiscount, consumeDiscount, discountCountsForStatus } from "@/lib/booking/discounts";
 import { listStaffNotifications, markStaffNotificationsRead, createNotification } from "@/lib/notifications/store";
@@ -61,7 +61,7 @@ import { getBookingRules, type BookingRulesSettings } from "@/lib/booking/availa
 import { getPaymentSettings, type PaymentSettings } from "@/lib/booking/paymentSettings";
 import { hashPassword, verifyPassword, validatePassword } from "@/lib/auth/password";
 import { getAnalytics } from "@/lib/admin/analytics";
-import { getSuperAdminStatus, setSuperAdminPassword } from "@/lib/admin/settings";
+import { getSuperAdminStatus, setSuperAdminPassword, verifySuperAdminPassword } from "@/lib/admin/settings";
 import {
   listStaffAdmin,
   beginAddStaff,
@@ -226,6 +226,24 @@ export async function updateBookingStatusAction(bookingGroupId: string, newStatu
 
 export async function cancelBookingGroupAction(bookingGroupId: string) {
   return updateBookingStatusAction(bookingGroupId, "cancelled");
+}
+
+/** Permanently delete a booking — gated by the super-admin password. */
+export async function deleteBookingGroupAction(bookingGroupId: string, superAdminPassword: string) {
+  const tenant = await resolveTenant();
+  const staff = await requireStaff();
+  if (!(await verifySuperAdminPassword(tenant.id, superAdminPassword))) {
+    return { ok: false as const, error: "Incorrect super-admin password." };
+  }
+  try {
+    await deleteBookingGroup(tenant.id, bookingGroupId);
+    await withTenant(tenant.id, (tx) =>
+      tx.auditLog.create({ data: { tenantId: tenant.id, actorUserId: staff.userId, actorKind: "staff", entity: "booking_group", entityId: bookingGroupId, action: "ADMIN_DELETE", details: {} } })
+    );
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
 }
 
 // ---------------------------------- Courts -------------------------------------

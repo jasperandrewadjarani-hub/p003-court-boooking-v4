@@ -2,17 +2,36 @@ import { withTenant } from "@/lib/tenant/withTenant";
 import { getBookingRules } from "@/lib/booking/availability";
 import { sweepLapsedBookings } from "@/lib/booking/expiry";
 import { compileSlots } from "@/lib/format";
+import { releaseDiscount, discountCountsForStatus } from "@/lib/booking/discounts";
+
+/** PERMANENTLY deletes a booking group and everything under it — bookings and
+ *  receipts cascade; payments are onDelete:Restrict so they're removed first.
+ *  Releases the discount usage if the booking was still counting. Irreversible;
+ *  the caller (deleteBookingGroupAction) gates this behind the super-admin
+ *  password. */
+export async function deleteBookingGroup(tenantId: string, id: string): Promise<void> {
+  await withTenant(tenantId, async (tx) => {
+    const group = await tx.bookingGroup.findFirst({ where: { tenantId, id }, select: { id: true, discountId: true, discountAmountMinor: true, status: true } });
+    if (!group) throw new Error("Booking not found.");
+    if (group.discountId && discountCountsForStatus(group.status)) {
+      await releaseDiscount(tx, tenantId, group.discountId, group.discountAmountMinor);
+    }
+    await tx.payment.deleteMany({ where: { tenantId, bookingGroupId: id } });
+    await tx.bookingGroup.delete({ where: { id } });
+  });
+}
 
 export interface BookingFilters {
   dateFrom?: string;
   dateTo?: string;
-  status?: string;
+  statuses?: string[]; // multi-select booking status
+  paymentStatuses?: string[]; // multi-select payment status
+  source?: string; // "customer" (web_app) | "admin" (staff/walk_in/phone)
   search?: string;
   // Filter by the promo code applied to the booking group. A specific code
   // matches that code exactly; the sentinel "__ANY__" matches any booking that
   // had ANY discount code applied. Empty/undefined = no discount filter.
   discountCode?: string;
-  paymentStatus?: string; // filter by BookingGroup.paymentStatus
   hideFuture?: boolean; // show only bookings whose play date is today or earlier
   sortBy?: SortField; // clickable-column sort
   sortDir?: "asc" | "desc";
@@ -47,6 +66,7 @@ export interface AdminBookingGroup {
   email: string;
   status: string;
   paymentStatus: string;
+  source: string; // raw BookingSource — "web_app" = customer, else admin
   amountPaidMinor: number;
   totalMinor: number;
   notes: string | null;
@@ -84,8 +104,10 @@ export async function listBookings(tenantId: string, filters: BookingFilters): P
       if (!localDate.lte || localDate.lte > today) localDate.lte = today;
     }
     if (Object.keys(localDate).length) where.bookings = { some: { localDate } };
-    if (filters.status) where.status = filters.status;
-    if (filters.paymentStatus) where.paymentStatus = filters.paymentStatus;
+    if (filters.statuses?.length) where.status = { in: filters.statuses };
+    if (filters.paymentStatuses?.length) where.paymentStatus = { in: filters.paymentStatuses };
+    if (filters.source === "customer") where.source = "web_app";
+    else if (filters.source === "admin") where.source = { in: ["walk_in", "staff", "phone"] };
     if (filters.discountCode) {
       where.discountCode = filters.discountCode === ANY_DISCOUNT ? { not: null } : filters.discountCode;
     }
@@ -138,6 +160,7 @@ function mapAdminGroup(g: any): AdminBookingGroup {
     email: g.customer.user.email,
     status: g.status,
     paymentStatus: g.paymentStatus,
+    source: g.source,
     amountPaidMinor: g.amountPaidMinor,
     totalMinor: g.totalMinor,
     notes: g.notes,
@@ -188,6 +211,8 @@ export async function getBookingGroupById(tenantId: string, id: string): Promise
   });
 }
 
+// HH:MM (kept lexicographically sortable — compileSlots merges by string
+// equality/order). Display is converted to AM/PM by formatTimeAmPm.
 function formatUtcTime(d: Date): string {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }

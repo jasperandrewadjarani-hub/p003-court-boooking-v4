@@ -29,6 +29,13 @@ export function labelize(value: string | null | undefined): string {
     .join(" ");
 }
 
+/** "HH:MM" (24h) → "h:mm AM/PM" for display. */
+export function formatTimeAmPm(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+}
+
 /** Money in minor units → "1,234.56" (thousands separators, 2 decimals).
  *  Callers prepend the currency symbol. */
 export function formatMoney(minor: number): string {

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { listBookingsAction, getBookingGroupAction } from "@/app/admin/actions";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
 import type { AdminBookingGroup, PagedBookings } from "@/lib/admin/bookings";
-import { labelize, formatMoney } from "@/lib/format";
+import { labelize, formatMoney, formatTimeAmPm } from "@/lib/format";
 
 // Status/payment font colors — same themed tokens the court dispatch grid uses.
 function statusColor(status: string): string {
@@ -29,18 +29,47 @@ const POLL_MS = 20_000;
 // possible future front-desk flows, but nothing in this deployment ever
 // writes those — client asked to trim the admin-facing UI to just the four
 // states that are actually used, not touch the underlying schema/enum.
-const STATUS_OPTIONS = ["", "reserved", "confirmed", "cancelled", "lapsed"];
-const PAYMENT_STATUS_OPTIONS = ["", "unpaid", "awaiting_verification", "partial", "paid", "refunded"];
+const STATUS_OPTIONS = ["reserved", "confirmed", "cancelled", "lapsed"];
+const PAYMENT_STATUS_OPTIONS = ["unpaid", "awaiting_verification", "partial", "paid", "refunded"];
 
 const ANY_DISCOUNT = "__ANY__";
 type SortField = "createdAt" | "customer" | "status" | "paymentStatus" | "amountPaid" | "total";
+
+// Multi-select checkbox dropdown (Status / Payment).
+function MultiCheck({ label, options, selected, onChange }: { label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const summary = selected.length === 0 ? "All" : selected.length === 1 ? labelize(selected[0]) : `${selected.length} selected`;
+  return (
+    <div className="field" style={{ position: "relative" }}>
+      <label>{label}</label>
+      <button type="button" className="select-sm" style={{ textAlign: "left", cursor: "pointer", width: "100%" }} onClick={() => setOpen((o) => !o)}>
+        {summary} ▾
+      </button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
+          <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 41, background: "var(--bg-panel)", border: "1px solid var(--accent-cyan)", borderRadius: 6, padding: 8, minWidth: 190, marginTop: 4, boxShadow: "0 12px 30px rgba(0,0,0,.4)" }}>
+            {options.map((o) => (
+              <label key={o} className="mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, textTransform: "none", padding: "4px 2px", cursor: "pointer" }}>
+                <input type="checkbox" style={{ width: "auto" }} checked={selected.includes(o)} onChange={() => onChange(selected.includes(o) ? selected.filter((x) => x !== o) : [...selected, o])} />
+                {labelize(o)}
+              </label>
+            ))}
+            {selected.length > 0 && <button type="button" className="link-btn" style={{ marginTop: 6 }} onClick={() => onChange([])}>Clear</button>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function BookingsTable({ initialResult, currency, discountCodes = [] }: { initialResult: PagedBookings; currency: string; discountCodes?: string[] }) {
   const [result, setResult] = useState(initialResult);
   const [dateFrom, setDateFrom] = useState(""); // empty = all dates
   const [dateTo, setDateTo] = useState("");
-  const [status, setStatus] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("");
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [paymentStatuses, setPaymentStatuses] = useState<string[]>([]);
+  const [source, setSource] = useState(""); // "" | "customer" | "admin"
   const [discount, setDiscount] = useState(""); // "" = all, ANY_DISCOUNT = any, or a specific code
   const [hideFuture, setHideFuture] = useState(false); // only today & earlier
   const [search, setSearch] = useState("");
@@ -59,7 +88,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
     }
     setRangeError(null);
     startTransition(async () => {
-      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, status: status || undefined, paymentStatus: paymentStatus || undefined, discountCode: discount || undefined, hideFuture: hideFuture || undefined, search: search || undefined, sortBy, sortDir, page: targetPage, pageSize: PAGE_SIZE });
+      const r = await listBookingsAction({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, statuses: statuses.length ? statuses : undefined, paymentStatuses: paymentStatuses.length ? paymentStatuses : undefined, source: source || undefined, discountCode: discount || undefined, hideFuture: hideFuture || undefined, search: search || undefined, sortBy, sortDir, page: targetPage, pageSize: PAGE_SIZE });
       setResult(r);
       setPage(targetPage);
     });
@@ -93,7 +122,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
     const h = setTimeout(() => fetchPage(1), 300);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, status, paymentStatus, discount, hideFuture, search, sortBy, sortDir]);
+  }, [dateFrom, dateTo, statuses, paymentStatuses, source, discount, hideFuture, search, sortBy, sortDir]);
 
   // Quiet background refresh — re-fetches the current page/filters without
   // disturbing scroll position or an open modal (a booking being managed
@@ -102,7 +131,7 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
     const id = setInterval(() => fetchPage(page), POLL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, status, paymentStatus, discount, hideFuture, search, sortBy, sortDir, page]);
+  }, [dateFrom, dateTo, statuses, paymentStatuses, source, discount, hideFuture, search, sortBy, sortDir, page]);
 
   const bookings = result.items;
   const totalPages = Math.max(1, Math.ceil(result.totalCount / result.pageSize));
@@ -137,24 +166,14 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
             <label>To</label>
             <input type="date" className="input-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
+          <MultiCheck label="Status" options={STATUS_OPTIONS} selected={statuses} onChange={setStatuses} />
+          <MultiCheck label="Payment" options={PAYMENT_STATUS_OPTIONS} selected={paymentStatuses} onChange={setPaymentStatuses} />
           <div className="field">
-            <label>Status</label>
-            <select className="select-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s === "" ? "All" : labelize(s)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Payment</label>
-            <select className="select-sm" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
-              {PAYMENT_STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s === "" ? "All" : labelize(s)}
-                </option>
-              ))}
+            <label>By</label>
+            <select className="select-sm" value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">All</option>
+              <option value="customer">Customer</option>
+              <option value="admin">Admin</option>
             </select>
           </div>
           <div className="field">
@@ -178,8 +197,9 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
             onClick={() => {
               setDateFrom("");
               setDateTo("");
-              setStatus("");
-              setPaymentStatus("");
+              setStatuses([]);
+              setPaymentStatuses([]);
+              setSource("");
               setDiscount("");
               setHideFuture(false);
               setSearch("");
@@ -205,8 +225,10 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
         <table className="admin-table">
           <thead>
             <tr>
-              <th>ID / Date</th>
+              <th>Booking ID</th>
+              <th>Booked Date</th>
               <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("createdAt")}>Made{sortArrow("createdAt")}{sortBy !== "createdAt" ? " ↕" : ""}</th>
+              <th>By</th>
               <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("customer")}>Customer{sortArrow("customer")}{sortBy !== "customer" ? " ↕" : ""}</th>
               <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("status")}>Status{sortArrow("status")}{sortBy !== "status" ? " ↕" : ""}</th>
               <th className="sortable-col" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("paymentStatus")}>Payment{sortArrow("paymentStatus")}{sortBy !== "paymentStatus" ? " ↕" : ""}</th>
@@ -220,15 +242,19 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
               <Fragment key={b.id}>
                 <tr className="booking-group-row" onClick={() => setExpanded(expanded === b.id ? null : b.id)}>
                   <td>
-                    <span className={`expand-caret ${expanded === b.id ? "open" : ""}`}>▶</span>
-                    {b.reference ?? "Pending"} · {b.dateLabel}
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span className={`expand-caret ${expanded === b.id ? "open" : ""}`}>▶</span>
+                      <span>{b.reference ?? "Pending"}</span>
+                    </div>
                     {b.discountCode && (
-                      <span className="mono" style={{ marginLeft: 8, padding: "1px 6px", borderRadius: 6, fontSize: 10, background: "color-mix(in srgb, var(--accent-optic) 16%, transparent)", color: "var(--accent-optic)", whiteSpace: "nowrap" }}>
+                      <span className="mono" style={{ display: "inline-block", marginTop: 4, padding: "1px 6px", borderRadius: 6, fontSize: 10, background: "color-mix(in srgb, var(--accent-optic) 16%, transparent)", color: "var(--accent-optic)", whiteSpace: "nowrap" }}>
                         🏷 {b.discountCode} −{currency} {formatMoney(b.discountAmountMinor)}
                       </span>
                     )}
                   </td>
+                  <td className="mono" style={{ whiteSpace: "nowrap", fontSize: 12 }}>{b.dateLabel}</td>
                   <td className="mono" style={{ whiteSpace: "nowrap", fontSize: 12 }}>{b.createdAtLabel}</td>
+                  <td>{b.source === "web_app" ? "Customer" : "Admin"}</td>
                   <td>{b.customerName}</td>
                   <td><span style={{ color: statusColor(b.status) }}>{labelize(b.status)}</span></td>
                   <td><span style={{ color: paymentColor(b.paymentStatus) }}>{labelize(b.paymentStatus)}</span></td>
@@ -252,12 +278,12 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
                 </tr>
                 {expanded === b.id && (
                   <tr className="booking-items-row">
-                    <td colSpan={8}>
+                    <td colSpan={10}>
                       <div className="booking-items-inner">
                         {b.items.map((item, i) => (
                           <div className="booking-item-line" key={i}>
                             <span>
-                              {item.courtName} {item.start}–{item.end}
+                              {item.courtName} {formatTimeAmPm(item.start)}–{formatTimeAmPm(item.end)}
                             </span>
                             <span>
                               {currency} {formatMoney(item.priceMinor)}
