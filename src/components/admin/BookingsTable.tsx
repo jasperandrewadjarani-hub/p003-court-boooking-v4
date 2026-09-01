@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
-import { listBookingsAction } from "@/app/admin/actions";
+import { useSearchParams } from "next/navigation";
+import { listBookingsAction, getBookingGroupAction } from "@/app/admin/actions";
 import { BookingOperationsModal } from "@/components/admin/BookingOperationsModal";
 import type { AdminBookingGroup, PagedBookings } from "@/lib/admin/bookings";
 import { labelize, formatMoney } from "@/lib/format";
@@ -71,6 +72,18 @@ export function BookingsTable({ initialResult, currency, discountCodes = [] }: {
     else { setSortBy(field); setSortDir("desc"); }
   }
   const sortArrow = (field: SortField) => (sortBy === field ? (sortDir === "asc" ? " ▲" : " ▼") : "");
+
+  // Deep-link from a notification: /admin/bookings?booking=<id> opens that
+  // booking's Operations modal on arrival.
+  const searchParams = useSearchParams();
+  const openedParam = useRef(false);
+  useEffect(() => {
+    const id = searchParams.get("booking");
+    if (!id || openedParam.current) return;
+    openedParam.current = true;
+    getBookingGroupAction(id).then((b) => { if (b) setEditing(b); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Auto-apply: any filter/sort change re-filters the list (debounced so typing
   // a name doesn't fire a request per keystroke) — no "Filter" button needed.

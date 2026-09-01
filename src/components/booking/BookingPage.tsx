@@ -6,6 +6,7 @@ import { beginCustomerBookingAuth } from "@/lib/auth/customerAuth";
 import type { AvailabilityGrid } from "@/lib/booking/availability";
 import type { MembershipOption } from "@/lib/booking/memberships";
 import { CourtGrid, slotKey } from "@/components/booking/CourtGrid";
+import { NotificationBell } from "@/components/NotificationBell";
 import { MonthCalendar } from "@/components/booking/MonthCalendar";
 import { CartBar, type CartItem } from "@/components/booking/CartBar";
 import { AccountModal } from "@/components/booking/AccountModal";
@@ -378,6 +379,8 @@ export function BookingPage({
       <div className="ticker">
         <div className="ticker__track">{occupancyText}</div>
       </div>
+
+      <NotificationBell audience="customer" />
 
       <header className="hud">
         {tenant.hasHeaderLogo ? (

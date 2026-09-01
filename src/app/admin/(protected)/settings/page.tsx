@@ -1,12 +1,12 @@
 import { resolveTenant } from "@/lib/tenant/resolve";
-import { getGeneralSettings, getLoyaltySettings, getNotificationSettings, getPerformanceSettings, getBrandingForAdmin, getEmailUsageLast24h } from "@/lib/admin/settings";
+import { getGeneralSettings, getLoyaltySettings, getNotificationSettings, getPerformanceSettings, getBrandingForAdmin, getEmailUsageLast24h, getInAppNotificationSettings } from "@/lib/admin/settings";
 import { getBookingRules } from "@/lib/booking/availability";
 import { getPaymentSettings, getPaymentQrImages } from "@/lib/booking/paymentSettings";
 import { SettingsManager } from "@/components/admin/SettingsManager";
 
 export default async function AdminSettingsPage() {
   const tenant = await resolveTenant();
-  const [general, rules, payments, qrImages, loyalty, notifications, performance, branding, emailUsage] = await Promise.all([
+  const [general, rules, payments, qrImages, loyalty, notifications, performance, branding, emailUsage, inappNotifications] = await Promise.all([
     getGeneralSettings(tenant.id),
     getBookingRules(tenant.id),
     getPaymentSettings(tenant.id),
@@ -16,6 +16,7 @@ export default async function AdminSettingsPage() {
     getPerformanceSettings(tenant.id),
     getBrandingForAdmin(tenant.id),
     getEmailUsageLast24h(tenant.id),
+    getInAppNotificationSettings(tenant.id),
   ]);
   return (
     <SettingsManager
@@ -28,6 +29,7 @@ export default async function AdminSettingsPage() {
       performance={performance}
       branding={branding}
       emailUsage={emailUsage}
+      inappNotifications={inappNotifications}
     />
   );
 }

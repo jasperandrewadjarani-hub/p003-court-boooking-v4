@@ -87,6 +87,25 @@
 }
 .theme-toggle:hover { color: var(--accent-optic); border-color: var(--accent-optic); }
 
+/* ------------------------ In-app notification bell ------------------------ */
+.notif-bell-wrap { position: fixed; top: 12px; right: 150px; z-index: 61; }
+.notif-bell-btn { position: relative; background: var(--bg-panel); border: 1px solid var(--line-grid); color: var(--text-primary); border-radius: 8px; padding: 5px 9px; font-size: 15px; cursor: pointer; line-height: 1; }
+.notif-bell-btn:hover { border-color: var(--accent-optic); }
+.notif-badge { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--payment-unpaid); color: #fff; font-family: var(--font-mono); font-size: 10px; line-height: 16px; text-align: center; font-weight: 700; }
+.notif-backdrop { position: fixed; inset: 0; z-index: 62; }
+.notif-dropdown { position: absolute; top: calc(100% + 8px); right: 0; z-index: 63; width: min(340px, calc(100vw - 24px)); max-height: 70vh; display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--accent-cyan); border-radius: 8px; box-shadow: 0 18px 48px rgba(0, 0, 0, .5); overflow: hidden; }
+.notif-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line-grid); font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1px; font-size: 13px; color: var(--accent-cyan); }
+.notif-enable { background: none; border: 1px solid var(--accent-optic); color: var(--accent-optic); border-radius: 6px; font-family: var(--font-mono); font-size: 10px; padding: 3px 7px; cursor: pointer; text-transform: none; letter-spacing: 0; }
+.notif-list { overflow-y: auto; }
+.notif-empty { padding: 22px 12px; text-align: center; color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; }
+.notif-item { padding: 10px 12px; border-bottom: 1px solid var(--line-grid); }
+.notif-item.clickable { cursor: pointer; }
+.notif-item.clickable:hover { background: var(--bg-raised); }
+.notif-item.unread { background: color-mix(in srgb, var(--accent-cyan) 8%, transparent); border-left: 2px solid var(--accent-cyan); }
+.notif-item-title { font-family: var(--font-display); font-size: 13px; color: var(--text-primary); }
+.notif-item-body { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
+.notif-item-time { font-family: var(--font-mono); font-size: 10px; color: var(--accent-cyan); margin-top: 4px; }
+
 /* --------------------------- Page boot loader ------------------------------
    Shown until the first availability grid load completes, so the page
    never appears to sit idle while the server starts. */
@@ -831,6 +850,8 @@ table.admin-table tr:hover td { background: rgba(46, 230, 255, 0.04); }
   .brand span { text-shadow: 0 0 9px rgba(198, 255, 61, 0.4); }
   .brand-sub { font-size: 9px; letter-spacing: 1.5px; margin-top: 4px; }
   .theme-toggle { font-size: 10px; padding: 6px 9px; top: 10px; right: 10px; }
+  .notif-bell-wrap { top: 8px; right: 116px; }
+  .notif-bell-btn { padding: 4px 8px; font-size: 14px; }
   .ticker { font-size: 10px; padding: 4px 0; }
   .shell { padding: 0 10px 56px; }
   .panel { padding: 12px; margin-bottom: 12px; }

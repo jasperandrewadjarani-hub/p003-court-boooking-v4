@@ -1,5 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { BookingRulesSettings } from "@/lib/booking/availability";
+import { createManyNotifications, type NotifArgs } from "@/lib/notifications/store";
 
 /**
  * Lazy read-repair for stale unpaid reservations — v2 ran this as a 10-min
@@ -24,14 +25,14 @@ export async function sweepLapsedBookings(
   // explicitly excludes Booking Source === STAFF rows) — an admin holding a
   // walk-in reservation open isn't the same "abandoned checkout" case this
   // sweep exists to reclaim.
-  const lapsedGroups = await tx.$queryRaw<{ id: string }[]>`
+  const lapsedGroups = await tx.$queryRaw<{ id: string; customer_id: string; reference: string | null }[]>`
     UPDATE booking_groups SET status = 'lapsed', updated_at = now()
     WHERE tenant_id = ${tenantId}::uuid AND status = 'reserved' AND source != 'staff'
       AND (
         (payment_status = 'unpaid' AND created_at < now() - (${rules.reservationHoldMinutes} || ' minutes')::interval)
         OR (payment_status = 'awaiting_verification' AND created_at < now() - (${rules.receiptReviewHoldMinutes} || ' minutes')::interval)
       )
-    RETURNING id
+    RETURNING id, customer_id, reference
   `;
 
   if (lapsedGroups.length) {
@@ -59,6 +60,14 @@ export async function sweepLapsedBookings(
       ) agg
       WHERE d.id = agg.discount_id AND d.tenant_id = ${tenantId}::uuid
     `;
+    // In-app notifications for each lapsed booking (staff + the customer).
+    const notifs: NotifArgs[] = [];
+    for (const g of lapsedGroups) {
+      const ref = g.reference ?? "your booking";
+      notifs.push({ audience: "customer", customerId: g.customer_id, type: "booking_lapsed", bookingGroupId: g.id, title: "Booking expired", body: `Your unpaid reservation ${ref} expired and the slot was released.` });
+      notifs.push({ audience: "staff", type: "booking_lapsed", bookingGroupId: g.id, title: "Booking lapsed", body: `Unpaid reservation ${ref} expired.` });
+    }
+    await createManyNotifications(tx, tenantId, notifs);
   }
 
   return lapsedGroups.map((g) => g.id);

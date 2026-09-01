@@ -6,6 +6,7 @@ import { getDispatchGrid } from "@/lib/admin/dispatchGrid";
 import { listBookings, getBookingGroupById, type BookingFilters } from "@/lib/admin/bookings";
 import { recordPayment } from "@/lib/admin/payments";
 import { releaseDiscount, consumeDiscount, discountCountsForStatus } from "@/lib/booking/discounts";
+import { listStaffNotifications, markStaffNotificationsRead, createNotification } from "@/lib/notifications/store";
 import { withTenant } from "@/lib/tenant/withTenant";
 import {
   listCourts,
@@ -41,6 +42,10 @@ import {
   getNotificationSettings,
   saveNotificationSettings,
   type NotificationSettings,
+  getInAppNotificationSettings,
+  saveInAppNotificationSettings,
+  enabledStaffNotifTypes,
+  type InAppNotificationSettings,
   getPerformanceSettings,
   savePerformanceSettings,
   type PerformanceSettings,
@@ -71,6 +76,35 @@ export async function fetchDispatchGridAction(dateKey: string) {
   const tenant = await resolveTenant();
   await requireStaff();
   return getDispatchGrid(tenant.id, dateKey);
+}
+
+// ------------------------------ Notifications (bell) ---------------------------
+export async function fetchStaffNotificationsAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  const settings = await getInAppNotificationSettings(tenant.id);
+  return listStaffNotifications(tenant.id, enabledStaffNotifTypes(settings));
+}
+export async function markStaffNotificationsReadAction(ids?: string[]) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  await markStaffNotificationsRead(tenant.id, ids);
+  return { ok: true as const };
+}
+export async function getInAppNotificationSettingsAction() {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  return getInAppNotificationSettings(tenant.id);
+}
+export async function saveInAppNotificationSettingsAction(input: InAppNotificationSettings) {
+  const tenant = await resolveTenant();
+  await requireStaff();
+  try {
+    await saveInAppNotificationSettings(tenant.id, input);
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Something went wrong." };
+  }
 }
 
 export async function listBookingsAction(filters: BookingFilters) {
@@ -148,9 +182,20 @@ export async function updateBookingStatusAction(bookingGroupId: string, newStatu
 
   try {
     await withTenant(tenant.id, async (tx) => {
-      const before = await tx.bookingGroup.findUnique({ where: { id: bookingGroupId }, select: { status: true, discountId: true, discountAmountMinor: true } });
+      const before = await tx.bookingGroup.findUnique({ where: { id: bookingGroupId }, select: { status: true, discountId: true, discountAmountMinor: true, customerId: true, reference: true } });
       await tx.bookingGroup.update({ where: { id: bookingGroupId }, data: { status: newStatus } });
       await tx.booking.updateMany({ where: { bookingGroupId }, data: { status: newStatus } });
+      // In-app notifications on staff-driven status changes.
+      if (before) {
+        const ref = before.reference ?? "your booking";
+        if (before.status !== "confirmed" && newStatus === "confirmed") {
+          await createNotification(tx, tenant.id, { audience: "customer", customerId: before.customerId, type: "booking_confirmed", bookingGroupId, title: "Booking confirmed", body: `Your booking ${ref} is confirmed. See you on the court!` });
+        }
+        if (before.status !== "cancelled" && newStatus === "cancelled") {
+          await createNotification(tx, tenant.id, { audience: "customer", customerId: before.customerId, type: "booking_cancelled", bookingGroupId, title: "Booking cancelled", body: `Your booking ${ref} was cancelled.` });
+          await createNotification(tx, tenant.id, { audience: "staff", type: "booking_cancelled", bookingGroupId, title: "Booking cancelled", body: `Booking ${ref} was cancelled.` });
+        }
+      }
       // Keep the discount's usage in sync: releasing it when the booking is
       // cancelled/lapsed, and re-consuming it if a cancelled/lapsed booking is
       // reactivated. Re-consume is best-effort (won't block the status change if

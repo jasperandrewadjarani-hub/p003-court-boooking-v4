@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { resolveTenant } from "@/lib/tenant/resolve";
 import { listBookings, getUsedDiscountCodes } from "@/lib/admin/bookings";
 import { BookingsTable } from "@/components/admin/BookingsTable";
@@ -8,5 +9,10 @@ export default async function AdminBookingsPage() {
     listBookings(tenant.id, { page: 1, pageSize: 20 }),
     getUsedDiscountCodes(tenant.id),
   ]);
-  return <BookingsTable initialResult={initial} currency={tenant.currency} discountCodes={discountCodes} />;
+  // Suspense: BookingsTable reads useSearchParams (notification deep-link).
+  return (
+    <Suspense fallback={null}>
+      <BookingsTable initialResult={initial} currency={tenant.currency} discountCodes={discountCodes} />
+    </Suspense>
+  );
 }

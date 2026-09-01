@@ -5,9 +5,26 @@ import { getAvailabilityGrid, getBookingRules } from "@/lib/booking/availability
 import { createBooking, priceCart, SlotTakenError, type CartItemInput } from "@/lib/booking/create";
 import { releaseDiscount, discountCountsForStatus } from "@/lib/booking/discounts";
 import { getCurrentCustomer } from "@/lib/auth/customerAuth";
+import { createNotification, listCustomerNotifications, markCustomerNotificationsRead } from "@/lib/notifications/store";
 import { getMyBookings } from "@/lib/booking/customerBookings";
 import { getPaymentQrImages } from "@/lib/booking/paymentSettings";
 import { withTenant } from "@/lib/tenant/withTenant";
+
+// ------------------------------ Notifications (bell) ---------------------------
+export async function fetchMyNotificationsAction() {
+  const tenant = await resolveTenant();
+  const customer = await getCurrentCustomer();
+  if (!customer) return { loggedIn: false as const, items: [], unreadCount: 0 };
+  const r = await listCustomerNotifications(tenant.id, customer.id);
+  return { loggedIn: true as const, ...r };
+}
+export async function markMyNotificationsReadAction(ids?: string[]) {
+  const tenant = await resolveTenant();
+  const customer = await getCurrentCustomer();
+  if (!customer) return { ok: false as const };
+  await markCustomerNotificationsRead(tenant.id, customer.id, ids);
+  return { ok: true as const };
+}
 
 export async function fetchGridAction(dateKey: string) {
   const tenant = await resolveTenant();
@@ -103,6 +120,12 @@ export async function cancelMyBookingAction(bookingGroupId: string) {
       // A cancelled booking releases its discount (availment + budget) back.
       if (group.discountId && discountCountsForStatus(group.status)) {
         await releaseDiscount(tx, tenant.id, group.discountId, group.discountAmountMinor);
+      }
+      // In-app notifications.
+      {
+        const ref = group.reference ?? "your booking";
+        await createNotification(tx, tenant.id, { audience: "customer", customerId: group.customerId, type: "booking_cancelled", bookingGroupId, title: "Booking cancelled", body: `Your booking ${ref} was cancelled.` });
+        await createNotification(tx, tenant.id, { audience: "staff", type: "booking_cancelled", bookingGroupId, title: "Booking cancelled", body: `Booking ${ref} was cancelled by the customer.` });
       }
       await tx.auditLog.create({
         data: {

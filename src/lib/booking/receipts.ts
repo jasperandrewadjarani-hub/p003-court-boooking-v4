@@ -5,6 +5,7 @@ import { resolveTenant } from "@/lib/tenant/resolve";
 import { getCurrentCustomer } from "@/lib/auth/customerAuth";
 import { storeReceipt } from "@/lib/storage/receipts";
 import { notifyPaymentSubmitted } from "@/lib/email/notifications";
+import { createNotification } from "@/lib/notifications/store";
 
 /** Matches v2's uploadCustomerReceipt: the signed-in customer uploads proof
  * of payment for their own booking group; flips paymentStatus to
@@ -43,6 +44,10 @@ export async function uploadReceiptAction(bookingGroupId: string, fileBytes: Arr
       if (group.paymentStatus === "unpaid") {
         await tx.bookingGroup.update({ where: { id: bookingGroupId }, data: { paymentStatus: "awaiting_verification" } });
       }
+      // In-app notifications: alert staff, acknowledge to the customer.
+      const ref = group.reference ?? "your booking";
+      await createNotification(tx, tenant.id, { audience: "staff", type: "payment_received", bookingGroupId, title: "Payment submitted", body: `${ref} has a payment awaiting verification.` });
+      await createNotification(tx, tenant.id, { audience: "customer", customerId: group.customerId, type: "payment_awaiting", bookingGroupId, title: "Payment received", body: `We received your payment for ${ref} — pending verification.` });
     });
 
     // Notify staff that a payment was submitted (best-effort; never blocks the

@@ -8,12 +8,13 @@ import {
   savePaymentQrImagesAction,
   saveLoyaltySettingsAction,
   saveNotificationSettingsAction,
+  saveInAppNotificationSettingsAction,
   savePerformanceSettingsAction,
   saveBrandingAction,
   resetBrandingAction,
   changeOwnPasswordAction,
 } from "@/app/admin/actions";
-import type { GeneralSettings, LoyaltySettings, NotificationSettings, PerformanceSettings, BrandingSettings } from "@/lib/admin/settings";
+import type { GeneralSettings, LoyaltySettings, NotificationSettings, PerformanceSettings, BrandingSettings, InAppNotificationSettings } from "@/lib/admin/settings";
 import type { BookingRulesSettings } from "@/lib/booking/availability";
 import type { PaymentSettings } from "@/lib/booking/paymentSettings";
 
@@ -27,6 +28,7 @@ interface Props {
   performance: PerformanceSettings;
   branding: BrandingSettings;
   emailUsage?: { sent: number; limit: number };
+  inappNotifications: InAppNotificationSettings;
 }
 
 // Branding swatch groups (v3b Settings "Branding & Logo" layout).
@@ -47,7 +49,7 @@ const STATE_SWATCHES: [keyof BrandingSettings, string][] = [
   ["unpaid", "Unpaid Medal"], ["awaiting", "Awaiting Verification Medal"], ["paid", "Paid Medal"],
 ];
 
-export function SettingsManager({ general, rules, payments, qrImages, loyalty, notifications, performance, branding, emailUsage }: Props) {
+export function SettingsManager({ general, rules, payments, qrImages, loyalty, notifications, performance, branding, emailUsage, inappNotifications }: Props) {
   const [generalForm, setGeneralForm] = useState(general);
   const [rulesForm, setRulesForm] = useState(rules);
   const [paymentsForm, setPaymentsForm] = useState(payments);
@@ -58,6 +60,7 @@ export function SettingsManager({ general, rules, payments, qrImages, loyalty, n
   const [brandForm, setBrandForm] = useState(branding);
   const [status, setStatus] = useState<string | null>(null);
 
+  const [inappForm, setInappForm] = useState(inappNotifications);
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
@@ -72,6 +75,7 @@ export function SettingsManager({ general, rules, payments, qrImages, loyalty, n
       savePaymentQrImagesAction(qrForm),
       saveLoyaltySettingsAction(loyaltyForm),
       saveNotificationSettingsAction(notifForm),
+      saveInAppNotificationSettingsAction(inappForm),
       savePerformanceSettingsAction(perfForm),
       saveBrandingAction(brandForm),
     ]);
@@ -398,6 +402,29 @@ export function SettingsManager({ general, rules, payments, qrImages, loyalty, n
             <label>Notification BCC</label>
             <input value={notifForm.notificationBcc} onChange={(e) => setNotifForm({ ...notifForm, notificationBcc: e.target.value })} />
           </div>
+        </div>
+
+        <div className="settings-section-title">In-App Notifications (Bell)</div>
+        <p className="dim mono" style={{ fontSize: 11, marginBottom: 10 }}>
+          Which alerts appear in the admin notification bell (top-right). Enable desktop pop-ups from the bell itself. Customers always get their own booking alerts when logged in.
+        </p>
+        <div className="settings-grid">
+          {(
+            [
+              ["newBooking", "New Booking Received"],
+              ["paymentReceived", "Payment Received"],
+              ["lapsed", "Lapsed Bookings"],
+              ["cancelled", "Cancelled Bookings"],
+            ] as [keyof InAppNotificationSettings, string][]
+          ).map(([key, label]) => (
+            <div className="settings-field" key={key}>
+              <label>{label}</label>
+              <select value={inappForm[key] ? "TRUE" : "FALSE"} onChange={(e) => setInappForm({ ...inappForm, [key]: e.target.value === "TRUE" })}>
+                <option>TRUE</option>
+                <option>FALSE</option>
+              </select>
+            </div>
+          ))}
         </div>
 
         <div className="settings-section-title">Performance &amp; Storage</div>

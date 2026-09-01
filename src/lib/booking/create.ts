@@ -3,6 +3,7 @@ import { calculateCartTotal, type CartDiscountInput } from "@/lib/pricing/calcul
 import { getBookingRules, gridWindowMinutes } from "@/lib/booking/availability";
 import { sweepLapsedBookings } from "@/lib/booking/expiry";
 import { quoteDiscount, consumeDiscount, type DiscountQuote } from "@/lib/booking/discounts";
+import { createNotification } from "@/lib/notifications/store";
 import { Prisma } from "@/generated/prisma/client";
 
 export interface CartItemInput {
@@ -267,6 +268,11 @@ export async function createBooking(input: CreateBookingInput): Promise<CreateBo
           details: { reference, totalMinor: cart.totalMinor, discountAmountMinor, itemCount: createdItems.length },
         },
       });
+
+      // Notify staff of a new CUSTOMER booking (not staff-created frontdesk ones).
+      if ((input.source ?? "web_app") !== "staff") {
+        await createNotification(tx, input.tenantId, { audience: "staff", type: "booking_received", bookingGroupId: group.id, title: "New booking received", body: `${reference} — ${createdItems.length} court slot(s) on ${input.dateKey}.` });
+      }
 
       return { bookingGroupId: group.id, reference, items: createdItems, discountAmountMinor };
     });

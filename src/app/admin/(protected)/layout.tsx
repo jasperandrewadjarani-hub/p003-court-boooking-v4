@@ -4,6 +4,7 @@ import { resolveTenant } from "@/lib/tenant/resolve";
 import { getBrandingSettings, brandingToCss } from "@/lib/admin/settings";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { AdminThemeToggle } from "@/components/admin/AdminThemeToggle";
+import { NotificationBell } from "@/components/NotificationBell";
 import { LogoutButton } from "@/components/admin/LogoutButton";
 
 export default async function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -24,6 +25,7 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
       {branding.headingFontUrl && <link rel="stylesheet" href={branding.headingFontUrl} />}
       <style dangerouslySetInnerHTML={{ __html: brandingToCss(branding) }} />
       <AdminThemeToggle />
+      <NotificationBell audience="staff" />
       <div className="admin-sidebar">
         {branding.hasLogo && (
           // Served from the cacheable /api/branding route (bytes are off the

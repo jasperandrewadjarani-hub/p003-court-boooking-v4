@@ -543,6 +543,27 @@ model Discount {
   @@map("discounts")
 }
 
+/// In-app notifications (bell) for staff (audience='staff', customerId null =
+/// shared tenant inbox) and customers (audience='customer', customerId set =
+/// that customer's inbox). `type` + `bookingGroupId` are plain fields (no FK
+/// enum) so new notification kinds need no migration. Tenant-scoped + RLS.
+model Notification {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  audience       String // 'staff' | 'customer'
+  customerId     String?   @map("customer_id") @db.Uuid
+  type           String // 'booking_received' | 'payment_received' | 'booking_confirmed' | 'booking_cancelled' | 'booking_lapsed' | 'payment_awaiting'
+  bookingGroupId String?   @map("booking_group_id") @db.Uuid
+  title          String
+  body           String
+  readAt         DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([tenantId, audience, createdAt(sort: Desc)])
+  @@index([tenantId, customerId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
 /// v3b BlockedSlots — admin-created non-booking court closures. Distinct from a
 /// court's maintenance status: a block targets a specific court + date + time
 /// window. Overlap checks (block-vs-booking and block-vs-block) run inside the

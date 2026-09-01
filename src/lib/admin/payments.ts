@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "crypto";
 import type { Prisma } from "@/generated/prisma/client";
+import { createNotification } from "@/lib/notifications/store";
 
 /**
  * Records a payment and recomputes BookingGroup.amountPaidMinor from the
@@ -52,6 +53,11 @@ export async function recordPayment(
     where: { id: args.bookingGroupId },
     data: { amountPaidMinor, paymentStatus: newPaymentStatus, status: newStatus },
   });
+
+  // Full payment just confirmed the booking → notify the customer.
+  if (newStatus === "confirmed" && group.status !== "confirmed") {
+    await createNotification(tx, args.tenantId, { audience: "customer", customerId: group.customerId, type: "booking_confirmed", bookingGroupId: args.bookingGroupId, title: "Booking confirmed", body: `Your payment for ${group.reference ?? "your booking"} is verified — booking confirmed!` });
+  }
 
   await tx.auditLog.create({
     data: {

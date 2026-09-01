@@ -108,6 +108,31 @@ export async function saveNotificationSettings(tenantId: string, input: Notifica
   return saveSettingKey(tenantId, "notification_settings", input);
 }
 
+// In-app (bell) notification toggles — which STAFF notification types the admin
+// bell shows. Customer notifications are always on.
+export interface InAppNotificationSettings {
+  newBooking: boolean;
+  paymentReceived: boolean;
+  lapsed: boolean;
+  cancelled: boolean;
+}
+const DEFAULT_INAPP: InAppNotificationSettings = { newBooking: true, paymentReceived: true, lapsed: true, cancelled: true };
+export async function getInAppNotificationSettings(tenantId: string) {
+  return getSettingKey(tenantId, "inapp_notifications", DEFAULT_INAPP);
+}
+export async function saveInAppNotificationSettings(tenantId: string, input: InAppNotificationSettings) {
+  return saveSettingKey(tenantId, "inapp_notifications", { newBooking: !!input.newBooking, paymentReceived: !!input.paymentReceived, lapsed: !!input.lapsed, cancelled: !!input.cancelled });
+}
+/** The enabled staff notification `type`s implied by the settings. */
+export function enabledStaffNotifTypes(s: InAppNotificationSettings): string[] {
+  const t: string[] = [];
+  if (s.newBooking) t.push("booking_received");
+  if (s.paymentReceived) t.push("payment_received");
+  if (s.lapsed) t.push("booking_lapsed");
+  if (s.cancelled) t.push("booking_cancelled");
+  return t;
+}
+
 /** Emails actually sent for this facility in the last 24h, against the Gmail
  *  SMTP soft cap (~500/day, POOLED across all facilities on the shared account —
  *  so this facility's own count is a lower bound on total usage). Powers the
