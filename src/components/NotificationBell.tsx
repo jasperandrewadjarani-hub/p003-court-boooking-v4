@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchStaffNotificationsAction, markStaffNotificationsReadAction } from "@/app/admin/actions";
-import { fetchMyNotificationsAction, markMyNotificationsReadAction } from "@/app/actions";
+import { fetchMyNotificationsAction, markMyNotificationsReadAction, logoutCustomerAction } from "@/app/actions";
 
 interface Item {
   id: string;
@@ -11,6 +11,7 @@ interface Item {
   title: string;
   body: string;
   bookingGroupId: string | null;
+  customerName?: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -97,6 +98,11 @@ export function NotificationBell({ audience }: { audience: "staff" | "customer" 
     }
   }
 
+  async function logout() {
+    try { await logoutCustomerAction(); } catch { /* ignore */ }
+    window.location.reload();
+  }
+
   if (!visible) return null;
 
   return (
@@ -111,9 +117,14 @@ export function NotificationBell({ audience }: { audience: "staff" | "customer" 
           <div className="notif-dropdown" role="dialog" aria-label="Notifications">
             <div className="notif-head">
               <strong>Notifications</strong>
-              {perm !== "granted" && perm !== "unsupported" && (
-                <button className="notif-enable" onClick={enableDesktop}>Enable desktop alerts</button>
-              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                {perm !== "granted" && perm !== "unsupported" && (
+                  <button className="notif-enable" onClick={enableDesktop}>Enable desktop alerts</button>
+                )}
+                {audience === "customer" && (
+                  <button className="notif-enable notif-logout" onClick={logout}>Log out</button>
+                )}
+              </div>
             </div>
             <div className="notif-list">
               {items.length === 0 ? (
@@ -125,7 +136,10 @@ export function NotificationBell({ audience }: { audience: "staff" | "customer" 
                     className={`notif-item${n.read ? "" : " unread"}${audience === "staff" && n.bookingGroupId ? " clickable" : ""}`}
                     onClick={() => clickItem(n)}
                   >
-                    <div className="notif-item-title">{n.title}</div>
+                    <div className="notif-item-head">
+                      <span className="notif-item-title">{n.title}</span>
+                      {n.customerName && <span className="notif-item-customer">{n.customerName}</span>}
+                    </div>
                     <div className="notif-item-body">{n.body}</div>
                     <div className="notif-item-time">{timeAgo(n.createdAt)}{audience === "staff" && n.bookingGroupId ? " · view booking →" : ""}</div>
                   </div>

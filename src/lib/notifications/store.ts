@@ -29,6 +29,7 @@ export interface NotificationItem {
   title: string;
   body: string;
   bookingGroupId: string | null;
+  customerName?: string | null; // shown on the admin bell (who the booking is for)
   read: boolean;
   createdAt: string; // ISO
 }
@@ -80,11 +81,18 @@ export async function listStaffNotifications(tenantId: string, enabledTypes: str
   const types = enabledTypes.length ? enabledTypes : ["__none__"]; // empty selection = show nothing
   return withTenant(tenantId, async (tx) => {
     const where = { tenantId, audience: "staff", type: { in: types } } as const;
-    const [items, unreadCount] = await Promise.all([
+    const [rows, unreadCount] = await Promise.all([
       tx.notification.findMany({ where, orderBy: { createdAt: "desc" }, take: limit }),
       tx.notification.count({ where: { ...where, readAt: null } }),
     ]);
-    return { items: items.map(mapNotif), unreadCount };
+    // Attach the booking's customer name (who it's for) for the admin bell.
+    const bgIds = [...new Set(rows.map((n) => n.bookingGroupId).filter(Boolean))] as string[];
+    const groups = bgIds.length
+      ? await tx.bookingGroup.findMany({ where: { tenantId, id: { in: bgIds } }, select: { id: true, customer: { select: { firstName: true, lastName: true } } } })
+      : [];
+    const nameById = new Map(groups.map((g) => [g.id, `${g.customer.firstName} ${g.customer.lastName}`.trim()]));
+    const items = rows.map((n) => ({ ...mapNotif(n), customerName: n.bookingGroupId ? nameById.get(n.bookingGroupId) ?? null : null }));
+    return { items, unreadCount };
   });
 }
 

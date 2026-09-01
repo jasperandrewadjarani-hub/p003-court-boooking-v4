@@ -105,7 +105,10 @@
 .notif-item.clickable { cursor: pointer; }
 .notif-item.clickable:hover { background: var(--bg-raised); }
 .notif-item.unread { background: color-mix(in srgb, var(--accent-cyan) 8%, transparent); border-left: 2px solid var(--accent-cyan); }
+.notif-item-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .notif-item-title { font-family: var(--font-display); font-size: 13px; color: var(--text-primary); }
+.notif-item-customer { flex: 0 0 auto; font-family: var(--font-mono); font-size: 11px; color: var(--accent-optic); white-space: nowrap; max-width: 48%; overflow: hidden; text-overflow: ellipsis; }
+.notif-logout { border-color: var(--accent-magenta); color: var(--accent-magenta); }
 .notif-item-body { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
 .notif-item-time { font-family: var(--font-mono); font-size: 10px; color: var(--accent-cyan); margin-top: 4px; }
 

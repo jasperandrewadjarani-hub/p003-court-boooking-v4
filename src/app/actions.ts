@@ -4,7 +4,7 @@ import { resolveTenant } from "@/lib/tenant/resolve";
 import { getAvailabilityGrid, getBookingRules } from "@/lib/booking/availability";
 import { createBooking, priceCart, SlotTakenError, type CartItemInput } from "@/lib/booking/create";
 import { releaseDiscount, discountCountsForStatus } from "@/lib/booking/discounts";
-import { getCurrentCustomer } from "@/lib/auth/customerAuth";
+import { getCurrentCustomer, logoutCustomer } from "@/lib/auth/customerAuth";
 import { createNotification, listCustomerNotifications, markCustomerNotificationsRead } from "@/lib/notifications/store";
 import { getMyBookings } from "@/lib/booking/customerBookings";
 import { getPaymentQrImages } from "@/lib/booking/paymentSettings";
@@ -23,6 +23,10 @@ export async function markMyNotificationsReadAction(ids?: string[]) {
   const customer = await getCurrentCustomer();
   if (!customer) return { ok: false as const };
   await markCustomerNotificationsRead(tenant.id, customer.id, ids);
+  return { ok: true as const };
+}
+export async function logoutCustomerAction() {
+  await logoutCustomer();
   return { ok: true as const };
 }
 
